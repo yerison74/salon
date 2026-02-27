@@ -125,7 +125,6 @@ export default function SalonPOS() {
   const handleAddTransaction = async () => {
     if (!newTx.cliente.trim()) return showToast("Nombre del cliente requerido", "err")
     if (newTx.monto_servicio <= 0) return showToast("Ingresa el monto del servicio", "err")
-    if (participantes.some(p => !p.empleada_nombre)) return showToast("Selecciona todas las empleadas", "err")
 
     setSaving(true)
     const res = await addTransactionAction({
@@ -133,7 +132,7 @@ export default function SalonPOS() {
       monto_recibido: newTx.metodo_pago === "tarjeta" ? montoACobrar :
                       newTx.metodo_pago === "transferencia" ? newTx.monto_servicio : newTx.monto_recibido,
       cambio_entregado: cambioCalc,
-      participantes,
+      participantes: participantes.filter(p => p.empleada_nombre.trim() !== ""),
     })
     setSaving(false)
     if (res.success) {
