@@ -1,0 +1,105 @@
+{
+  "node": {
+    "007e320adcf837c20e5240f55e8ce9cb17d1ba8f0d": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5CJavier%5C%5CDownloads%5C%5Csalon-pos%5C%5Cactions%5C%5Cindex.ts%22%2C%5B%7B%22id%22%3A%22007e320adcf837c20e5240f55e8ce9cb17d1ba8f0d%22%2C%22exportedName%22%3A%22getDatesWithActivity%22%7D%2C%7B%22id%22%3A%22402af10c91a9a9d3dfbd4be8105f85628cca8a07a6%22%2C%22exportedName%22%3A%22addExpenseAction%22%7D%2C%7B%22id%22%3A%224039d5cf89cc698dac0cbf96dc66d2bb8ba43d0b6d%22%2C%22exportedName%22%3A%22deleteEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240971d1b2cb9ebe63becceba49c4765e6870bb8cf3%22%2C%22exportedName%22%3A%22deleteExpenseAction%22%7D%2C%7B%22id%22%3A%2240ac11ace7ced67f72969642ade2a19d44758f2dfd%22%2C%22exportedName%22%3A%22deleteTransactionAction%22%7D%2C%7B%22id%22%3A%2240c8c279a3dc97f6e1a620c656bc453d167f64a7f3%22%2C%22exportedName%22%3A%22getInitialData%22%7D%2C%7B%22id%22%3A%2240cda82439cfd1d11a96749c217283fc686aba4e71%22%2C%22exportedName%22%3A%22addEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240e2afcf5cdd9e540bbd9f32673fd56514f7cd2de8%22%2C%22exportedName%22%3A%22addTransactionAction%22%7D%2C%7B%22id%22%3A%2240e3e3a9ad5169b34b70d6d72216849052d651d457%22%2C%22exportedName%22%3A%22updateInitialAmountAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "402af10c91a9a9d3dfbd4be8105f85628cca8a07a6": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5CJavier%5C%5CDownloads%5C%5Csalon-pos%5C%5Cactions%5C%5Cindex.ts%22%2C%5B%7B%22id%22%3A%22007e320adcf837c20e5240f55e8ce9cb17d1ba8f0d%22%2C%22exportedName%22%3A%22getDatesWithActivity%22%7D%2C%7B%22id%22%3A%22402af10c91a9a9d3dfbd4be8105f85628cca8a07a6%22%2C%22exportedName%22%3A%22addExpenseAction%22%7D%2C%7B%22id%22%3A%224039d5cf89cc698dac0cbf96dc66d2bb8ba43d0b6d%22%2C%22exportedName%22%3A%22deleteEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240971d1b2cb9ebe63becceba49c4765e6870bb8cf3%22%2C%22exportedName%22%3A%22deleteExpenseAction%22%7D%2C%7B%22id%22%3A%2240ac11ace7ced67f72969642ade2a19d44758f2dfd%22%2C%22exportedName%22%3A%22deleteTransactionAction%22%7D%2C%7B%22id%22%3A%2240c8c279a3dc97f6e1a620c656bc453d167f64a7f3%22%2C%22exportedName%22%3A%22getInitialData%22%7D%2C%7B%22id%22%3A%2240cda82439cfd1d11a96749c217283fc686aba4e71%22%2C%22exportedName%22%3A%22addEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240e2afcf5cdd9e540bbd9f32673fd56514f7cd2de8%22%2C%22exportedName%22%3A%22addTransactionAction%22%7D%2C%7B%22id%22%3A%2240e3e3a9ad5169b34b70d6d72216849052d651d457%22%2C%22exportedName%22%3A%22updateInitialAmountAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "4039d5cf89cc698dac0cbf96dc66d2bb8ba43d0b6d": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5CJavier%5C%5CDownloads%5C%5Csalon-pos%5C%5Cactions%5C%5Cindex.ts%22%2C%5B%7B%22id%22%3A%22007e320adcf837c20e5240f55e8ce9cb17d1ba8f0d%22%2C%22exportedName%22%3A%22getDatesWithActivity%22%7D%2C%7B%22id%22%3A%22402af10c91a9a9d3dfbd4be8105f85628cca8a07a6%22%2C%22exportedName%22%3A%22addExpenseAction%22%7D%2C%7B%22id%22%3A%224039d5cf89cc698dac0cbf96dc66d2bb8ba43d0b6d%22%2C%22exportedName%22%3A%22deleteEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240971d1b2cb9ebe63becceba49c4765e6870bb8cf3%22%2C%22exportedName%22%3A%22deleteExpenseAction%22%7D%2C%7B%22id%22%3A%2240ac11ace7ced67f72969642ade2a19d44758f2dfd%22%2C%22exportedName%22%3A%22deleteTransactionAction%22%7D%2C%7B%22id%22%3A%2240c8c279a3dc97f6e1a620c656bc453d167f64a7f3%22%2C%22exportedName%22%3A%22getInitialData%22%7D%2C%7B%22id%22%3A%2240cda82439cfd1d11a96749c217283fc686aba4e71%22%2C%22exportedName%22%3A%22addEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240e2afcf5cdd9e540bbd9f32673fd56514f7cd2de8%22%2C%22exportedName%22%3A%22addTransactionAction%22%7D%2C%7B%22id%22%3A%2240e3e3a9ad5169b34b70d6d72216849052d651d457%22%2C%22exportedName%22%3A%22updateInitialAmountAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "40971d1b2cb9ebe63becceba49c4765e6870bb8cf3": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5CJavier%5C%5CDownloads%5C%5Csalon-pos%5C%5Cactions%5C%5Cindex.ts%22%2C%5B%7B%22id%22%3A%22007e320adcf837c20e5240f55e8ce9cb17d1ba8f0d%22%2C%22exportedName%22%3A%22getDatesWithActivity%22%7D%2C%7B%22id%22%3A%22402af10c91a9a9d3dfbd4be8105f85628cca8a07a6%22%2C%22exportedName%22%3A%22addExpenseAction%22%7D%2C%7B%22id%22%3A%224039d5cf89cc698dac0cbf96dc66d2bb8ba43d0b6d%22%2C%22exportedName%22%3A%22deleteEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240971d1b2cb9ebe63becceba49c4765e6870bb8cf3%22%2C%22exportedName%22%3A%22deleteExpenseAction%22%7D%2C%7B%22id%22%3A%2240ac11ace7ced67f72969642ade2a19d44758f2dfd%22%2C%22exportedName%22%3A%22deleteTransactionAction%22%7D%2C%7B%22id%22%3A%2240c8c279a3dc97f6e1a620c656bc453d167f64a7f3%22%2C%22exportedName%22%3A%22getInitialData%22%7D%2C%7B%22id%22%3A%2240cda82439cfd1d11a96749c217283fc686aba4e71%22%2C%22exportedName%22%3A%22addEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240e2afcf5cdd9e540bbd9f32673fd56514f7cd2de8%22%2C%22exportedName%22%3A%22addTransactionAction%22%7D%2C%7B%22id%22%3A%2240e3e3a9ad5169b34b70d6d72216849052d651d457%22%2C%22exportedName%22%3A%22updateInitialAmountAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "40ac11ace7ced67f72969642ade2a19d44758f2dfd": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5CJavier%5C%5CDownloads%5C%5Csalon-pos%5C%5Cactions%5C%5Cindex.ts%22%2C%5B%7B%22id%22%3A%22007e320adcf837c20e5240f55e8ce9cb17d1ba8f0d%22%2C%22exportedName%22%3A%22getDatesWithActivity%22%7D%2C%7B%22id%22%3A%22402af10c91a9a9d3dfbd4be8105f85628cca8a07a6%22%2C%22exportedName%22%3A%22addExpenseAction%22%7D%2C%7B%22id%22%3A%224039d5cf89cc698dac0cbf96dc66d2bb8ba43d0b6d%22%2C%22exportedName%22%3A%22deleteEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240971d1b2cb9ebe63becceba49c4765e6870bb8cf3%22%2C%22exportedName%22%3A%22deleteExpenseAction%22%7D%2C%7B%22id%22%3A%2240ac11ace7ced67f72969642ade2a19d44758f2dfd%22%2C%22exportedName%22%3A%22deleteTransactionAction%22%7D%2C%7B%22id%22%3A%2240c8c279a3dc97f6e1a620c656bc453d167f64a7f3%22%2C%22exportedName%22%3A%22getInitialData%22%7D%2C%7B%22id%22%3A%2240cda82439cfd1d11a96749c217283fc686aba4e71%22%2C%22exportedName%22%3A%22addEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240e2afcf5cdd9e540bbd9f32673fd56514f7cd2de8%22%2C%22exportedName%22%3A%22addTransactionAction%22%7D%2C%7B%22id%22%3A%2240e3e3a9ad5169b34b70d6d72216849052d651d457%22%2C%22exportedName%22%3A%22updateInitialAmountAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "40c8c279a3dc97f6e1a620c656bc453d167f64a7f3": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5CJavier%5C%5CDownloads%5C%5Csalon-pos%5C%5Cactions%5C%5Cindex.ts%22%2C%5B%7B%22id%22%3A%22007e320adcf837c20e5240f55e8ce9cb17d1ba8f0d%22%2C%22exportedName%22%3A%22getDatesWithActivity%22%7D%2C%7B%22id%22%3A%22402af10c91a9a9d3dfbd4be8105f85628cca8a07a6%22%2C%22exportedName%22%3A%22addExpenseAction%22%7D%2C%7B%22id%22%3A%224039d5cf89cc698dac0cbf96dc66d2bb8ba43d0b6d%22%2C%22exportedName%22%3A%22deleteEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240971d1b2cb9ebe63becceba49c4765e6870bb8cf3%22%2C%22exportedName%22%3A%22deleteExpenseAction%22%7D%2C%7B%22id%22%3A%2240ac11ace7ced67f72969642ade2a19d44758f2dfd%22%2C%22exportedName%22%3A%22deleteTransactionAction%22%7D%2C%7B%22id%22%3A%2240c8c279a3dc97f6e1a620c656bc453d167f64a7f3%22%2C%22exportedName%22%3A%22getInitialData%22%7D%2C%7B%22id%22%3A%2240cda82439cfd1d11a96749c217283fc686aba4e71%22%2C%22exportedName%22%3A%22addEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240e2afcf5cdd9e540bbd9f32673fd56514f7cd2de8%22%2C%22exportedName%22%3A%22addTransactionAction%22%7D%2C%7B%22id%22%3A%2240e3e3a9ad5169b34b70d6d72216849052d651d457%22%2C%22exportedName%22%3A%22updateInitialAmountAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "40cda82439cfd1d11a96749c217283fc686aba4e71": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5CJavier%5C%5CDownloads%5C%5Csalon-pos%5C%5Cactions%5C%5Cindex.ts%22%2C%5B%7B%22id%22%3A%22007e320adcf837c20e5240f55e8ce9cb17d1ba8f0d%22%2C%22exportedName%22%3A%22getDatesWithActivity%22%7D%2C%7B%22id%22%3A%22402af10c91a9a9d3dfbd4be8105f85628cca8a07a6%22%2C%22exportedName%22%3A%22addExpenseAction%22%7D%2C%7B%22id%22%3A%224039d5cf89cc698dac0cbf96dc66d2bb8ba43d0b6d%22%2C%22exportedName%22%3A%22deleteEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240971d1b2cb9ebe63becceba49c4765e6870bb8cf3%22%2C%22exportedName%22%3A%22deleteExpenseAction%22%7D%2C%7B%22id%22%3A%2240ac11ace7ced67f72969642ade2a19d44758f2dfd%22%2C%22exportedName%22%3A%22deleteTransactionAction%22%7D%2C%7B%22id%22%3A%2240c8c279a3dc97f6e1a620c656bc453d167f64a7f3%22%2C%22exportedName%22%3A%22getInitialData%22%7D%2C%7B%22id%22%3A%2240cda82439cfd1d11a96749c217283fc686aba4e71%22%2C%22exportedName%22%3A%22addEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240e2afcf5cdd9e540bbd9f32673fd56514f7cd2de8%22%2C%22exportedName%22%3A%22addTransactionAction%22%7D%2C%7B%22id%22%3A%2240e3e3a9ad5169b34b70d6d72216849052d651d457%22%2C%22exportedName%22%3A%22updateInitialAmountAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "40e2afcf5cdd9e540bbd9f32673fd56514f7cd2de8": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5CJavier%5C%5CDownloads%5C%5Csalon-pos%5C%5Cactions%5C%5Cindex.ts%22%2C%5B%7B%22id%22%3A%22007e320adcf837c20e5240f55e8ce9cb17d1ba8f0d%22%2C%22exportedName%22%3A%22getDatesWithActivity%22%7D%2C%7B%22id%22%3A%22402af10c91a9a9d3dfbd4be8105f85628cca8a07a6%22%2C%22exportedName%22%3A%22addExpenseAction%22%7D%2C%7B%22id%22%3A%224039d5cf89cc698dac0cbf96dc66d2bb8ba43d0b6d%22%2C%22exportedName%22%3A%22deleteEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240971d1b2cb9ebe63becceba49c4765e6870bb8cf3%22%2C%22exportedName%22%3A%22deleteExpenseAction%22%7D%2C%7B%22id%22%3A%2240ac11ace7ced67f72969642ade2a19d44758f2dfd%22%2C%22exportedName%22%3A%22deleteTransactionAction%22%7D%2C%7B%22id%22%3A%2240c8c279a3dc97f6e1a620c656bc453d167f64a7f3%22%2C%22exportedName%22%3A%22getInitialData%22%7D%2C%7B%22id%22%3A%2240cda82439cfd1d11a96749c217283fc686aba4e71%22%2C%22exportedName%22%3A%22addEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240e2afcf5cdd9e540bbd9f32673fd56514f7cd2de8%22%2C%22exportedName%22%3A%22addTransactionAction%22%7D%2C%7B%22id%22%3A%2240e3e3a9ad5169b34b70d6d72216849052d651d457%22%2C%22exportedName%22%3A%22updateInitialAmountAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "40e3e3a9ad5169b34b70d6d72216849052d651d457": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5CJavier%5C%5CDownloads%5C%5Csalon-pos%5C%5Cactions%5C%5Cindex.ts%22%2C%5B%7B%22id%22%3A%22007e320adcf837c20e5240f55e8ce9cb17d1ba8f0d%22%2C%22exportedName%22%3A%22getDatesWithActivity%22%7D%2C%7B%22id%22%3A%22402af10c91a9a9d3dfbd4be8105f85628cca8a07a6%22%2C%22exportedName%22%3A%22addExpenseAction%22%7D%2C%7B%22id%22%3A%224039d5cf89cc698dac0cbf96dc66d2bb8ba43d0b6d%22%2C%22exportedName%22%3A%22deleteEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240971d1b2cb9ebe63becceba49c4765e6870bb8cf3%22%2C%22exportedName%22%3A%22deleteExpenseAction%22%7D%2C%7B%22id%22%3A%2240ac11ace7ced67f72969642ade2a19d44758f2dfd%22%2C%22exportedName%22%3A%22deleteTransactionAction%22%7D%2C%7B%22id%22%3A%2240c8c279a3dc97f6e1a620c656bc453d167f64a7f3%22%2C%22exportedName%22%3A%22getInitialData%22%7D%2C%7B%22id%22%3A%2240cda82439cfd1d11a96749c217283fc686aba4e71%22%2C%22exportedName%22%3A%22addEmpleadaAction%22%7D%2C%7B%22id%22%3A%2240e2afcf5cdd9e540bbd9f32673fd56514f7cd2de8%22%2C%22exportedName%22%3A%22addTransactionAction%22%7D%2C%7B%22id%22%3A%2240e3e3a9ad5169b34b70d6d72216849052d651d457%22%2C%22exportedName%22%3A%22updateInitialAmountAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    }
+  },
+  "edge": {},
+  "encryptionKey": "X5Am1KY2ECOaGkGUxzYb3trJtxTD439ZCQHgyv2qqnU="
+}
