@@ -24,6 +24,51 @@ import {
 
 type Section = "dashboard" | "nueva-transaccion" | "transacciones" | "gastos" | "estadisticas" | "comisiones" | "empleadas" | "configuracion"
 
+// ─── LISTA DE PRECIOS ────────────────────────────────────
+export interface PrecioServicio {
+  id: string
+  nombre: string
+  precio: number | null // null = precio variable
+  categoria: string
+}
+
+const PRECIOS_INICIALES: PrecioServicio[] = [
+  // Depilación con cera
+  { id: "dep_axila",    nombre: "Axila",            precio: 250,  categoria: "Depilación con cera" },
+  { id: "dep_cejas",    nombre: "Cejas",             precio: 100,  categoria: "Depilación con cera" },
+  { id: "dep_bigote",   nombre: "Bigote",            precio: 100,  categoria: "Depilación con cera" },
+  { id: "dep_pierna",   nombre: "Pierna",            precio: 500,  categoria: "Depilación con cera" },
+  // Manos y pies
+  { id: "mp_manicura",  nombre: "Manicura",          precio: 300,  categoria: "Manos y pies" },
+  { id: "mp_pedicura",  nombre: "Pedicura",          precio: 400,  categoria: "Manos y pies" },
+  { id: "mp_gel",       nombre: "Pintura en gel",    precio: 400,  categoria: "Manos y pies" },
+  { id: "mp_normal",    nombre: "Pintura normal",    precio: 150,  categoria: "Manos y pies" },
+  // Tratamientos
+  { id: "tr_oleo",      nombre: "Óleo regenerador",  precio: 400,  categoria: "Tratamientos" },
+  { id: "tr_botox",     nombre: "Botox",             precio: 300,  categoria: "Tratamientos" },
+  { id: "tr_cirugia",   nombre: "Cirugía onz",       precio: 1500, categoria: "Tratamientos" },
+  { id: "tr_keratina",  nombre: "Keratina onz",      precio: 1500, categoria: "Tratamientos" },
+  { id: "tr_amp_ker",   nombre: "Ampollas keratin sho", precio: 2500, categoria: "Tratamientos" },
+  { id: "tr_amp_len",   nombre: "Ampollas lendal",   precio: 1500, categoria: "Tratamientos" },
+  { id: "tr_amp_ant",   nombre: "Ampollas anticaída bloo", precio: 400, categoria: "Tratamientos" },
+  { id: "tr_amp_sal",   nombre: "Ampollas saler placenta vegetal", precio: 300, categoria: "Tratamientos" },
+  // Procesos químicos
+  { id: "pq_retoque",   nombre: "Retoques de tinte", precio: 2000, categoria: "Procesos químicos" },
+  { id: "pq_cambio",    nombre: "Cambio de color",   precio: 3500, categoria: "Procesos químicos" },
+  { id: "pq_mechas_f",  nombre: "Mechas frontales",  precio: 4000, categoria: "Procesos químicos" },
+  { id: "pq_mechas_c",  nombre: "Mechas completas",  precio: 8000, categoria: "Procesos químicos" },
+  { id: "pq_desrizado", nombre: "Desrizado",         precio: 15000,categoria: "Procesos químicos" },
+  { id: "pq_celofen",   nombre: "Celofen",           precio: 700,  categoria: "Procesos químicos" },
+  // Servicios
+  { id: "sv_lav_rolo",  nombre: "Lavado + secado a rolo",    precio: 450,  categoria: "Servicios" },
+  { id: "sv_lav_dir",   nombre: "Lavado + secado directo",   precio: 550,  categoria: "Servicios" },
+  { id: "sv_lav_lin",   nombre: "Lavado con línea + secado", precio: 800,  categoria: "Servicios" },
+  { id: "sv_plancha",   nombre: "Plancha",           precio: 300,  categoria: "Servicios" },
+  { id: "sv_ondas",     nombre: "Ondas",             precio: 400,  categoria: "Servicios" },
+  { id: "sv_corte_p",   nombre: "Corte de puntas",   precio: 800,  categoria: "Servicios" },
+  { id: "sv_corte_f",   nombre: "Corte con forma",   precio: 1200, categoria: "Servicios" },
+]
+
 const MENU_ITEMS = [
   { id: "dashboard",         label: "Dashboard",       icon: LayoutDashboard },
   { id: "nueva-transaccion", label: "Nueva Venta",      icon: Plus },
@@ -64,6 +109,30 @@ export default function SalonPOS() {
   const [editingInicial,setEditingInicial]= useState(false)
   const [tempInicial,   setTempInicial]   = useState(0)
   const [expandedTx,    setExpandedTx]    = useState<string|null>(null)
+
+  // ── Lista de precios ──────────────────────────────────
+  const [precios, setPrecios] = useState<PrecioServicio[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("salon_precios")
+        if (stored) return JSON.parse(stored)
+      } catch {}
+    }
+    return PRECIOS_INICIALES
+  })
+  const [editandoPrecio, setEditandoPrecio] = useState<string|null>(null)
+  const [tempPrecio, setTempPrecio] = useState<string>("")
+  const [editandoNombre, setEditandoNombre] = useState<string|null>(null)
+  const [tempNombre, setTempNombre] = useState<string>("")
+
+  const guardarPrecios = (nuevos: PrecioServicio[]) => {
+    setPrecios(nuevos)
+    if (typeof window !== "undefined") {
+      localStorage.setItem("salon_precios", JSON.stringify(nuevos))
+    }
+  }
+
+  const categoriasPrecios = Array.from(new Set(precios.map(p => p.categoria)))
 
   // ── Formulario nueva transacción ──────────────────────
   const [newTx, setNewTx] = useState({
@@ -367,6 +436,31 @@ export default function SalonPOS() {
                     )
                   })}
                 </div>
+              </div>
+
+              {/* Selector de servicio del menú */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Seleccionar del Menú de Servicios</label>
+                <select
+                  defaultValue=""
+                  onChange={e => {
+                    const precio = precios.find(p => p.id === e.target.value)
+                    if (precio && precio.precio !== null) {
+                      setNewTx(prev => ({ ...prev, monto_servicio: precio.precio! }))
+                    }
+                  }}
+                  className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300 bg-white">
+                  <option value="">— Elegir servicio (opcional) —</option>
+                  {categoriasPrecios.map(cat => (
+                    <optgroup key={cat} label={cat}>
+                      {precios.filter(p => p.categoria === cat).map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.nombre}{p.precio !== null ? ` — RD$${p.precio.toLocaleString()}` : " — precio variable"}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
 
               {/* Cliente y montos */}
@@ -904,6 +998,97 @@ export default function SalonPOS() {
                   <p>• Comisiones: base = monto / nº empleadas × %</p>
                   <p>• Máximo de comisión: 15% (todo completo / lavado+secado)</p>
                 </div>
+              </div>
+            </div>
+
+            {/* ── MENÚ DE PRECIOS ─────────────────────────────── */}
+            <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden mt-6">
+              <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-800">Menú de Precios</h3>
+                <span className="text-xs text-gray-400">Haz clic en el nombre o precio para editar</span>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {categoriasPrecios.map(cat => (
+                  <div key={cat}>
+                    <div className="px-6 py-2 bg-gradient-to-r from-rose-50 to-pink-50">
+                      <span className="text-xs font-bold text-pink-600 uppercase tracking-wider">{cat}</span>
+                    </div>
+                    {precios.filter(p => p.categoria === cat).map(p => (
+                      <div key={p.id} className="flex items-center justify-between px-6 py-3 hover:bg-gray-50 transition-colors">
+                        {/* Nombre editable */}
+                        <div className="flex-1 mr-4">
+                          {editandoNombre === p.id ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                value={tempNombre}
+                                onChange={e => setTempNombre(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter") {
+                                    guardarPrecios(precios.map(x => x.id === p.id ? { ...x, nombre: tempNombre } : x))
+                                    setEditandoNombre(null)
+                                  }
+                                  if (e.key === "Escape") setEditandoNombre(null)
+                                }}
+                                autoFocus
+                                className="flex-1 rounded-lg border border-pink-300 px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                              <button onClick={() => {
+                                guardarPrecios(precios.map(x => x.id === p.id ? { ...x, nombre: tempNombre } : x))
+                                setEditandoNombre(null)
+                              }} className="text-xs text-pink-500 font-medium">✓</button>
+                              <button onClick={() => setEditandoNombre(null)} className="text-xs text-gray-400">✕</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setEditandoNombre(p.id); setTempNombre(p.nombre) }}
+                              className="text-sm text-gray-700 hover:text-pink-600 transition-colors text-left w-full">
+                              {p.nombre}
+                            </button>
+                          )}
+                        </div>
+                        {/* Precio editable */}
+                        <div className="flex-shrink-0">
+                          {editandoPrecio === p.id ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-400">RD$</span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={tempPrecio}
+                                onChange={e => setTempPrecio(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter") {
+                                    guardarPrecios(precios.map(x => x.id === p.id ? { ...x, precio: parseFloat(tempPrecio) || null } : x))
+                                    setEditandoPrecio(null)
+                                  }
+                                  if (e.key === "Escape") setEditandoPrecio(null)
+                                }}
+                                autoFocus
+                                className="w-24 rounded-lg border border-pink-300 px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                              <button onClick={() => {
+                                guardarPrecios(precios.map(x => x.id === p.id ? { ...x, precio: parseFloat(tempPrecio) || null } : x))
+                                setEditandoPrecio(null)
+                              }} className="text-xs text-pink-500 font-medium">✓</button>
+                              <button onClick={() => setEditandoPrecio(null)} className="text-xs text-gray-400">✕</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setEditandoPrecio(p.id); setTempPrecio(p.precio?.toString() ?? "") }}
+                              className="font-bold text-sm text-gray-800 hover:text-pink-600 transition-colors rounded-lg bg-gray-50 hover:bg-pink-50 px-3 py-1 border border-transparent hover:border-pink-200">
+                              {p.precio !== null ? `RD$${p.precio.toLocaleString()}` : "Variable"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <div className="px-6 py-4 border-t border-gray-50">
+                <button
+                  onClick={() => guardarPrecios(PRECIOS_INICIALES)}
+                  className="text-xs text-gray-400 hover:text-red-400 transition-colors">
+                  Restablecer precios originales
+                </button>
               </div>
             </div>
           </div>
