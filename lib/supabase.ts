@@ -102,6 +102,32 @@ export interface ComisionEmpleada {
   participaciones: Participacion[]
 }
 
+// Fiado (deuda de cliente)
+export interface Fiado {
+  id: string
+  cliente_nombre: string
+  descripcion: string
+  monto_total: number
+  monto_pagado: number
+  fecha: string
+  saldado: boolean
+  fecha_saldado?: string | null
+  notas: string
+  created_at?: string
+  // join opcional
+  abonos?: AbonoFiado[]
+}
+
+// Abono a un fiado
+export interface AbonoFiado {
+  id: string
+  fiado_id: string
+  monto: number
+  fecha: string
+  notas: string
+  created_at?: string
+}
+
 // Pago de comisión quincenal registrado
 export interface PagoComision {
   id: string

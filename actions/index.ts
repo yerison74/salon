@@ -365,3 +365,96 @@ export async function getHistorialPagosAction() {
     return { success: false, pagos: [], error: error?.message }
   }
 }
+
+// ─────────────────────────────────────────────
+// FIADOS
+// ─────────────────────────────────────────────
+
+export async function getFiadosAction() {
+  try {
+    const [fiadosRes, abonosRes] = await Promise.all([
+      supabase.from("fiados").select("*").order("created_at", { ascending: false }),
+      supabase.from("abonos_fiados").select("*").order("fecha", { ascending: true }),
+    ])
+    const fiados: Fiado[] = (fiadosRes.data || []).map((f: any) => ({
+      ...f,
+      abonos: (abonosRes.data || []).filter((a: any) => a.fiado_id === f.id),
+    }))
+    return { success: true, fiados }
+  } catch (error: any) {
+    return { success: false, fiados: [], error: error?.message }
+  }
+}
+
+export async function addFiadoAction(data: {
+  cliente_nombre: string
+  descripcion: string
+  monto_total: number
+  notas?: string
+}) {
+  try {
+    const { error } = await supabase.from("fiados").insert({
+      ...data,
+      notas: data.notas || "",
+      fecha: todayISO(),
+    })
+    if (error) throw error
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Error al registrar fiado" }
+  }
+}
+
+export async function addAbonoAction(data: {
+  fiado_id: string
+  monto: number
+  monto_total: number
+  monto_pagado_actual: number
+  notas?: string
+}) {
+  try {
+    const nuevo_pagado = data.monto_pagado_actual + data.monto
+    const saldado = nuevo_pagado >= data.monto_total
+    // Insertar abono
+    const { error: abonoErr } = await supabase.from("abonos_fiados").insert({
+      fiado_id: data.fiado_id,
+      monto: data.monto,
+      fecha: todayISO(),
+      notas: data.notas || "",
+    })
+    if (abonoErr) throw abonoErr
+    // Actualizar fiado
+    const update: any = { monto_pagado: nuevo_pagado, saldado }
+    if (saldado) update.fecha_saldado = todayISO()
+    const { error: fiadoErr } = await supabase.from("fiados").update(update).eq("id", data.fiado_id)
+    if (fiadoErr) throw fiadoErr
+    return { success: true, saldado }
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Error al registrar abono" }
+  }
+}
+
+export async function marcarSaldadoAction(fiado_id: string) {
+  try {
+    const { data: fiado } = await supabase.from("fiados").select("monto_total").eq("id", fiado_id).single()
+    const { error } = await supabase.from("fiados").update({
+      saldado: true,
+      monto_pagado: fiado?.monto_total ?? 0,
+      fecha_saldado: todayISO(),
+    }).eq("id", fiado_id)
+    if (error) throw error
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Error al marcar como saldado" }
+  }
+}
+
+export async function deleteFiadoAction(fiado_id: string) {
+  try {
+    const { error } = await supabase.from("fiados").delete().eq("id", fiado_id)
+    if (error) throw error
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Error al eliminar fiado" }
+  }
+}

@@ -22,11 +22,12 @@ import {
   addEmpleadaAction, deleteEmpleadaAction, updateInitialAmountAction,
   addExpenseAction, deleteExpenseAction, getDatesWithActivity,
   getComisionesQuincenalesAction, registrarPagoComisionAction,
-  registrarPagoTodosAction,
+  registrarPagoTodosAction, getFiadosAction, addFiadoAction,
+  addAbonoAction, marcarSaldadoAction, deleteFiadoAction,
 } from "@/actions"
-import type { PagoComision } from "@/lib/supabase"
+import type { PagoComision, Fiado, AbonoFiado } from "@/lib/supabase"
 
-type Section = "dashboard" | "nueva-transaccion" | "transacciones" | "gastos" | "estadisticas" | "comisiones" | "comisiones-quincenales" | "empleadas" | "servicios" | "configuracion"
+type Section = "dashboard" | "nueva-transaccion" | "transacciones" | "gastos" | "estadisticas" | "comisiones" | "comisiones-quincenales" | "empleadas" | "servicios" | "fiados" | "configuracion"
 
 // ─── LISTA DE PRECIOS ────────────────────────────────────
 export interface PrecioServicio {
@@ -83,6 +84,7 @@ const MENU_ITEMS = [
   { id: "comisiones-quincenales", label: "Quincena",           icon: TrendingUp },
   { id: "empleadas",         label: "Empleadas",        icon: UserPlus },
   { id: "servicios",         label: "Servicios",        icon: Tag },
+  { id: "fiados",            label: "Fiados",           icon: Wallet },
   { id: "configuracion",     label: "Configuración",   icon: Settings },
 ] as const
 
@@ -159,6 +161,155 @@ export default function SalonPOS() {
     if (res.success) { showToast("Pagos de todas las empleadas registrados ✓"); setConfirmPagoTodos(false); cargarQuincena(qDesde, qHasta) }
     else showToast(res.error || "Error", "err")
   }
+
+  // ── Fiados ────────────────────────────────────────────
+  const [fiados,          setFiados]          = useState<Fiado[]>([])
+  const [fiadosBusqueda,  setFiadosBusqueda]  = useState("")
+  const [fiadosFiltro,    setFiadosFiltro]    = useState<"todos"|"pendientes"|"saldados">("pendientes")
+  const [expandedFiado,   setExpandedFiado]   = useState<string|null>(null)
+  const [nuevoFiado,      setNuevoFiado]      = useState({ cliente_nombre: "", descripcion: "", monto_total: "", notas: "" })
+  const [abonoModal,      setAbonoModal]      = useState<Fiado|null>(null)
+  const [abonoMonto,      setAbonoMonto]      = useState("")
+  const [abonoNotas,      setAbonoNotas]      = useState("")
+  const [fiadosLoaded,    setFiadosLoaded]    = useState(false)
+
+  const cargarFiados = async () => {
+    const res = await getFiadosAction()
+    if (res.success) { setFiados(res.fiados); setFiadosLoaded(true) }
+    else showToast("Error al cargar fiados", "err")
+  }
+
+  const handleAddFiado = async () => {
+    if (!nuevoFiado.cliente_nombre.trim()) return showToast("Nombre del cliente requerido", "err")
+    if (!nuevoFiado.monto_total || parseFloat(nuevoFiado.monto_total) <= 0) return showToast("Ingresa el monto del fiado", "err")
+    setSaving(true)
+    const res = await addFiadoAction({
+      cliente_nombre: nuevoFiado.cliente_nombre.trim(),
+      descripcion: nuevoFiado.descripcion.trim(),
+      monto_total: parseFloat(nuevoFiado.monto_total),
+      notas: nuevoFiado.notas.trim(),
+    })
+    setSaving(false)
+    if (res.success) { showToast("Fiado registrado ✓"); setNuevoFiado({ cliente_nombre: "", descripcion: "", monto_total: "", notas: "" }); cargarFiados() }
+    else showToast(res.error || "Error", "err")
+  }
+
+  const handleAddAbono = async () => {
+    if (!abonoModal) return
+    const monto = parseFloat(abonoMonto)
+    if (!monto || monto <= 0) return showToast("Ingresa un monto válido", "err")
+    const pendiente = abonoModal.monto_total - abonoModal.monto_pagado
+    if (monto > pendiente) return showToast(`El abono no puede ser mayor al saldo pendiente (${formatCurrency(pendiente)})`, "err")
+    setSaving(true)
+    const res = await addAbonoAction({
+      fiado_id: abonoModal.id,
+      monto,
+      monto_total: abonoModal.monto_total,
+      monto_pagado_actual: abonoModal.monto_pagado,
+      notas: abonoNotas.trim(),
+    })
+    setSaving(false)
+    if (res.success) {
+      showToast(res.saldado ? "¡Fiado saldado completamente! ✓" : "Abono registrado ✓")
+      setAbonoModal(null); setAbonoMonto(""); setAbonoNotas("")
+      cargarFiados()
+    } else showToast(res.error || "Error", "err")
+  }
+
+  const handleMarcarSaldado = async (f: Fiado) => {
+    if (!confirm(`¿Marcar el fiado de ${f.cliente_nombre} como completamente saldado?`)) return
+    setSaving(true)
+    const res = await marcarSaldadoAction(f.id)
+    setSaving(false)
+    if (res.success) { showToast("Fiado marcado como saldado ✓"); cargarFiados() }
+    else showToast(res.error || "Error", "err")
+  }
+
+  const handleDeleteFiado = async (id: string) => {
+    if (!confirm("¿Eliminar este fiado y todos sus abonos?")) return
+    setSaving(true)
+    const res = await deleteFiadoAction(id)
+    setSaving(false)
+    if (res.success) { showToast("Fiado eliminado"); cargarFiados() }
+    else showToast(res.error || "Error", "err")
+  }
+
+  const exportFiadosPDF = async () => {
+    try {
+      const { jsPDF } = await import("jspdf")
+      const { default: autoTable } = await import("jspdf-autotable")
+      const doc = new jsPDF()
+      doc.setFontSize(18); doc.setFont("helvetica", "bold")
+      doc.text("Reporte de Fiados", 20, 20)
+      doc.setFontSize(10); doc.setFont("helvetica", "normal")
+      doc.text(`Generado: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 20, 30)
+      const pendientes = fiados.filter(f => !f.saldado)
+      const totalPendiente = pendientes.reduce((s, f) => s + (f.monto_total - f.monto_pagado), 0)
+      doc.text(`Total pendiente por cobrar: RD$${totalPendiente.toLocaleString()}`, 20, 37)
+      autoTable(doc, {
+        startY: 48,
+        head: [["Cliente", "Descripción", "Total", "Pagado", "Pendiente", "Fecha", "Estado"]],
+        body: fiados.map(f => [
+          f.cliente_nombre, f.descripcion,
+          formatCurrency(f.monto_total), formatCurrency(f.monto_pagado),
+          formatCurrency(f.monto_total - f.monto_pagado),
+          f.fecha, f.saldado ? "✓ Saldado" : "Pendiente",
+        ]),
+        theme: "striped", styles: { fontSize: 9 },
+        headStyles: { fillColor: [139, 92, 246] },
+        didParseCell: (data: any) => {
+          if (data.section === "body" && data.column.index === 6) {
+            if (data.cell.raw === "✓ Saldado") {
+              data.cell.styles.textColor = [6, 95, 70]
+              data.cell.styles.fontStyle = "bold"
+            } else {
+              data.cell.styles.textColor = [185, 28, 28]
+              data.cell.styles.fontStyle = "bold"
+            }
+          }
+        },
+      })
+      // Desglose de abonos por cliente
+      fiados.filter(f => (f.abonos || []).length > 0).forEach(f => {
+        const y = (doc as any).lastAutoTable.finalY + 12
+        if (y > 260) doc.addPage()
+        doc.setFontSize(10); doc.setFont("helvetica", "bold")
+        doc.text(`Abonos de ${f.cliente_nombre}`, 20, y > 260 ? 20 : y)
+        autoTable(doc, {
+          startY: (y > 260 ? 20 : y) + 4,
+          head: [["Fecha", "Monto", "Notas"]],
+          body: (f.abonos || []).map(a => [a.fecha, formatCurrency(a.monto), a.notas || "—"]),
+          theme: "striped", styles: { fontSize: 8 },
+          headStyles: { fillColor: [107, 114, 128] },
+        })
+      })
+      doc.save(`fiados-${todayISO()}.pdf`)
+    } catch { showToast("Error al generar PDF", "err") }
+  }
+
+  const exportFiadosExcel = async () => {
+    try {
+      const XLSX = await import("xlsx")
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+        ["REPORTE DE FIADOS — SALÓN DE BELLEZA"],
+        [`Generado: ${format(new Date(), "dd/MM/yyyy HH:mm")}`], [],
+        ["Cliente", "Descripción", "Total", "Pagado", "Pendiente", "Fecha", "Estado"],
+        ...fiados.map(f => [
+          f.cliente_nombre, f.descripcion, f.monto_total, f.monto_pagado,
+          f.monto_total - f.monto_pagado, f.fecha, f.saldado ? "Saldado" : "Pendiente",
+        ]),
+      ]), "Fiados")
+      fiados.filter(f => (f.abonos || []).length > 0).forEach(f => {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+          [`Abonos de ${f.cliente_nombre}`], [],
+          ["Fecha", "Monto", "Notas"],
+          ...(f.abonos || []).map(a => [a.fecha, a.monto, a.notas || ""]),
+        ]), f.cliente_nombre.substring(0, 31))
+      })
+      XLSX.writeFile(wb, `fiados-${todayISO()}.xlsx`)
+    } catch { showToast("Error al generar Excel", "err") }
+  }
   const [menuOpen,      setMenuOpen]      = useState(false)
   const [loading,       setLoading]       = useState(true)
   const [saving,        setSaving]        = useState(false)
@@ -226,6 +377,9 @@ export default function SalonPOS() {
   }, [])
 
   useEffect(() => { loadData(selectedDate) }, [selectedDate, loadData])
+
+  // Cargar fiados al entrar a la sección
+  useEffect(() => { if (section === "fiados" && !fiadosLoaded) cargarFiados() }, [section])
 
   // Cuando cambia la cantidad de participantes, ajustar el array
   useEffect(() => {
@@ -1518,6 +1672,276 @@ export default function SalonPOS() {
             </div>
           </div>
         )
+
+      // ── FIADOS ────────────────────────────────────────
+      case "fiados": {
+        const fiadosFiltrados = fiados
+          .filter(f => {
+            const matchBusqueda = fiadosBusqueda.trim() === "" ||
+              f.cliente_nombre.toLowerCase().includes(fiadosBusqueda.toLowerCase()) ||
+              f.descripcion.toLowerCase().includes(fiadosBusqueda.toLowerCase())
+            const matchFiltro =
+              fiadosFiltro === "todos" ? true :
+              fiadosFiltro === "pendientes" ? !f.saldado :
+              f.saldado
+            return matchBusqueda && matchFiltro
+          })
+        const totalPendiente = fiados.filter(f => !f.saldado).reduce((s, f) => s + (f.monto_total - f.monto_pagado), 0)
+        const totalFiado = fiados.filter(f => !f.saldado).reduce((s, f) => s + f.monto_total, 0)
+        const clientesPendientes = fiados.filter(f => !f.saldado).length
+
+        return (
+          <div className="max-w-3xl mx-auto space-y-5">
+
+            {/* ── KPIs ── */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-2xl bg-gradient-to-br from-violet-400 to-purple-600 p-4 text-white shadow-lg">
+                <div className="text-violet-100 text-xs font-medium uppercase tracking-widest mb-1">Por cobrar</div>
+                <div className="text-2xl font-black">{formatCurrency(totalPendiente)}</div>
+                <div className="text-violet-200 text-xs mt-1">{clientesPendientes} cliente{clientesPendientes !== 1 ? "s" : ""}</div>
+              </div>
+              <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                <div className="text-gray-400 text-xs font-medium uppercase tracking-widest mb-1">Total fiado</div>
+                <div className="text-2xl font-black text-gray-700">{formatCurrency(totalFiado)}</div>
+                <div className="text-gray-400 text-xs mt-1">monto original</div>
+              </div>
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm">
+                <div className="text-emerald-500 text-xs font-medium uppercase tracking-widest mb-1">Saldados</div>
+                <div className="text-2xl font-black text-emerald-600">{fiados.filter(f => f.saldado).length}</div>
+                <div className="text-emerald-400 text-xs mt-1">completados</div>
+              </div>
+            </div>
+
+            {/* ── Nuevo fiado ── */}
+            <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-5 space-y-4">
+              <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                <Wallet className="h-5 w-5 text-violet-400" /> Registrar Nuevo Fiado
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Cliente *</label>
+                  <input value={nuevoFiado.cliente_nombre}
+                    onChange={e => setNuevoFiado({ ...nuevoFiado, cliente_nombre: e.target.value })}
+                    placeholder="Nombre del cliente"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Monto (RD$) *</label>
+                  <input type="number" min="0" value={nuevoFiado.monto_total}
+                    onChange={e => setNuevoFiado({ ...nuevoFiado, monto_total: e.target.value })}
+                    placeholder="0.00"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Descripción del servicio</label>
+                <input value={nuevoFiado.descripcion}
+                  onChange={e => setNuevoFiado({ ...nuevoFiado, descripcion: e.target.value })}
+                  placeholder="¿Qué servicio se realizó?"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Notas</label>
+                <input value={nuevoFiado.notas}
+                  onChange={e => setNuevoFiado({ ...nuevoFiado, notas: e.target.value })}
+                  placeholder="Observaciones adicionales…"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
+              </div>
+              <button onClick={handleAddFiado} disabled={saving}
+                className="w-full rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white py-3 font-semibold text-sm shadow hover:shadow-lg disabled:opacity-50 transition-all">
+                {saving ? "Registrando…" : "Registrar Fiado"}
+              </button>
+            </div>
+
+            {/* ── Filtros + búsqueda + exportar ── */}
+            <div className="flex flex-wrap gap-2 items-center">
+              <div className="relative flex-1 min-w-40">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input value={fiadosBusqueda} onChange={e => setFiadosBusqueda(e.target.value)}
+                  placeholder="Buscar cliente…"
+                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white" />
+                {fiadosBusqueda && (
+                  <button onClick={() => setFiadosBusqueda("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              {(["pendientes","todos","saldados"] as const).map(f => (
+                <button key={f} onClick={() => setFiadosFiltro(f)}
+                  className={cn("rounded-xl px-4 py-2.5 text-sm font-medium transition-all capitalize",
+                    fiadosFiltro === f
+                      ? "bg-violet-500 text-white shadow"
+                      : "border border-gray-200 bg-white text-gray-500 hover:border-violet-300"
+                  )}>
+                  {f === "pendientes" ? "Pendientes" : f === "saldados" ? "Saldados" : "Todos"}
+                </button>
+              ))}
+              <button onClick={exportFiadosPDF}
+                className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-all">
+                <Download className="h-4 w-4 text-violet-400" /> PDF
+              </button>
+              <button onClick={exportFiadosExcel}
+                className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-all">
+                <FileSpreadsheet className="h-4 w-4 text-emerald-400" /> Excel
+              </button>
+            </div>
+
+            {/* ── Lista de fiados ── */}
+            <div className="space-y-3">
+              {fiadosFiltrados.length === 0 && (
+                <div className="text-center py-14 text-gray-400">
+                  <Wallet className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                  <p className="text-sm">{fiadosBusqueda ? `No se encontró "${fiadosBusqueda}"` : "No hay fiados en esta categoría"}</p>
+                </div>
+              )}
+              {fiadosFiltrados.map(f => {
+                const pendiente = f.monto_total - f.monto_pagado
+                const pct = Math.min(100, Math.round((f.monto_pagado / f.monto_total) * 100))
+                const isExp = expandedFiado === f.id
+                return (
+                  <div key={f.id} className={cn("rounded-2xl border bg-white shadow-sm overflow-hidden",
+                    f.saldado ? "border-emerald-100" : "border-gray-100"
+                  )}>
+                    {/* Header */}
+                    <div className="flex items-center gap-3 p-4">
+                      <div className={cn("h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm",
+                        f.saldado ? "bg-emerald-100 text-emerald-600" : "bg-violet-100 text-violet-600"
+                      )}>
+                        {f.cliente_nombre.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-gray-800">{f.cliente_nombre}</span>
+                          {f.saldado
+                            ? <span className="text-xs rounded-full px-2 py-0.5 bg-emerald-100 text-emerald-600 font-medium">✓ Saldado</span>
+                            : <span className="text-xs rounded-full px-2 py-0.5 bg-rose-100 text-rose-600 font-medium">Pendiente</span>
+                          }
+                        </div>
+                        {f.descripcion && <div className="text-xs text-gray-400 truncate">{f.descripcion}</div>}
+                        <div className="text-xs text-gray-400">{f.fecha}</div>
+                        {/* Barra de progreso */}
+                        <div className="mt-2 flex items-center gap-2">
+                          <div className="flex-1 h-1.5 rounded-full bg-gray-100">
+                            <div className={cn("h-full rounded-full transition-all", f.saldado ? "bg-emerald-400" : "bg-violet-400")}
+                              style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-xs text-gray-400 flex-shrink-0">{pct}%</span>
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0 space-y-1">
+                        <div className="text-xs text-gray-400">Total</div>
+                        <div className="font-bold text-gray-800">{formatCurrency(f.monto_total)}</div>
+                        {!f.saldado && (
+                          <div className="text-xs font-semibold text-rose-500">
+                            Debe: {formatCurrency(pendiente)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-1 flex-shrink-0 ml-2">
+                        {!f.saldado && (
+                          <>
+                            <button onClick={() => { setAbonoModal(f); setAbonoMonto(""); setAbonoNotas("") }}
+                              className="rounded-lg bg-violet-500 hover:bg-violet-600 text-white px-3 py-1.5 text-xs font-semibold transition-all">
+                              + Abono
+                            </button>
+                            <button onClick={() => handleMarcarSaldado(f)} disabled={saving}
+                              className="rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-50">
+                              Saldado
+                            </button>
+                          </>
+                        )}
+                        <button onClick={() => setExpandedFiado(isExp ? null : f.id)}
+                          className="rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 px-3 py-1.5 text-xs transition-all flex items-center gap-1 justify-center">
+                          {isExp ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                          Historial
+                        </button>
+                        <button onClick={() => handleDeleteFiado(f.id)}
+                          className="rounded-lg text-gray-200 hover:text-red-400 transition-all flex items-center justify-center py-1">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Historial de abonos expandible */}
+                    {isExp && (
+                      <div className="border-t border-gray-50 bg-gray-50 px-4 py-3 space-y-2">
+                        <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">
+                          Historial de abonos · {(f.abonos || []).length}
+                        </div>
+                        {(f.abonos || []).length === 0 ? (
+                          <p className="text-sm text-gray-400">Sin abonos registrados</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {(f.abonos || []).map((a, i) => (
+                              <div key={a.id} className="flex items-center justify-between rounded-xl bg-white border border-gray-100 px-3 py-2">
+                                <div>
+                                  <span className="text-xs text-gray-400 mr-2">Abono #{i + 1}</span>
+                                  <span className="text-xs text-gray-500">{a.fecha}</span>
+                                  {a.notas && <span className="text-xs text-gray-400 ml-2 italic">· {a.notas}</span>}
+                                </div>
+                                <span className="font-semibold text-violet-600 text-sm">{formatCurrency(a.monto)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {f.saldado && f.fecha_saldado && (
+                          <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2 text-xs text-emerald-600 font-medium flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4" /> Saldado completamente el {f.fecha_saldado}
+                          </div>
+                        )}
+                        {f.notas && (
+                          <p className="text-xs text-gray-400 italic">Nota: {f.notas}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* ── Modal abono ── */}
+            {abonoModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+                onClick={() => setAbonoModal(null)}>
+                <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm space-y-4"
+                  onClick={e => e.stopPropagation()}>
+                  <div>
+                    <h4 className="font-bold text-gray-800 text-lg">Registrar Abono</h4>
+                    <p className="text-sm text-gray-500">{abonoModal.cliente_nombre}</p>
+                  </div>
+                  <div className="rounded-xl bg-violet-50 border border-violet-100 px-4 py-3 flex justify-between text-sm">
+                    <span className="text-violet-600">Saldo pendiente</span>
+                    <span className="font-bold text-violet-700">{formatCurrency(abonoModal.monto_total - abonoModal.monto_pagado)}</span>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Monto del abono (RD$) *</label>
+                    <input type="number" min="0" value={abonoMonto}
+                      onChange={e => setAbonoMonto(e.target.value)}
+                      placeholder="0.00" autoFocus
+                      className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Notas</label>
+                    <input value={abonoNotas} onChange={e => setAbonoNotas(e.target.value)}
+                      placeholder="Observación (opcional)"
+                      className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => setAbonoModal(null)}
+                      className="flex-1 rounded-xl border border-gray-200 text-gray-600 py-2.5 text-sm font-medium hover:bg-gray-50 transition-all">
+                      Cancelar
+                    </button>
+                    <button onClick={handleAddAbono} disabled={saving}
+                      className="flex-1 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white py-2.5 text-sm font-semibold shadow disabled:opacity-50 transition-all">
+                      {saving ? "Guardando…" : "Registrar Abono"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      }
 
       // ── CONFIGURACIÓN ─────────────────────────────────
       case "configuracion":
