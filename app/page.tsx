@@ -172,6 +172,8 @@ export default function SalonPOS() {
   const [abonoModal,      setAbonoModal]      = useState<Fiado|null>(null)
   const [abonoMonto,      setAbonoMonto]      = useState("")
   const [abonoNotas,      setAbonoNotas]      = useState("")
+  const [abonoMetodo,     setAbonoMetodo]     = useState<"efectivo"|"tarjeta"|"transferencia">("efectivo")
+  const [abonoBanco,      setAbonoBanco]      = useState("")
   const [fiadosLoaded,    setFiadosLoaded]    = useState(false)
   const [fiadoSeleccionadoId, setFiadoSeleccionadoId] = useState<string|null>(null)
 
@@ -202,7 +204,25 @@ export default function SalonPOS() {
     if (!monto || monto <= 0) return showToast("Ingresa un monto válido", "err")
     const pendiente = abonoModal.monto_total - abonoModal.monto_pagado
     if (monto > pendiente) return showToast(`El abono no puede ser mayor al saldo pendiente (${formatCurrency(pendiente)})`, "err")
+    if (abonoMetodo === "transferencia" && !abonoBanco) return showToast("Selecciona el banco", "err")
+
+    const montoConTarjeta = abonoMetodo === "tarjeta" ? Math.round(monto * 1.05 * 100) / 100 : monto
+
     setSaving(true)
+
+    // 1. Registrar como transacción del día para que afecte el resumen de caja
+    await addTransactionAction({
+      cliente: abonoModal.cliente_nombre,
+      metodo_pago: abonoMetodo,
+      banco_transferencia: abonoMetodo === "transferencia" ? abonoBanco : "",
+      monto_servicio: monto,
+      monto_recibido: montoConTarjeta,
+      cambio_entregado: 0,
+      observaciones: `Abono fiado${abonoNotas.trim() ? ` — ${abonoNotas.trim()}` : ""}`,
+      participantes: [],
+    })
+
+    // 2. Registrar el abono en el fiado
     const res = await addAbonoAction({
       fiado_id: abonoModal.id,
       monto,
@@ -210,21 +230,24 @@ export default function SalonPOS() {
       monto_pagado_actual: abonoModal.monto_pagado,
       notas: abonoNotas.trim(),
     })
+
     setSaving(false)
     if (res.success) {
       showToast(res.saldado ? "¡Fiado saldado completamente! ✓" : "Abono registrado ✓")
-      setAbonoModal(null); setAbonoMonto(""); setAbonoNotas("")
+      setAbonoModal(null); setAbonoMonto(""); setAbonoNotas(""); setAbonoMetodo("efectivo"); setAbonoBanco("")
       cargarFiados()
+      loadData(todayISO())
     } else showToast(res.error || "Error", "err")
   }
 
   const handleMarcarSaldado = async (f: Fiado) => {
-    if (!confirm(`¿Marcar el fiado de ${f.cliente_nombre} como completamente saldado?`)) return
-    setSaving(true)
-    const res = await marcarSaldadoAction(f.id)
-    setSaving(false)
-    if (res.success) { showToast("Fiado marcado como saldado ✓"); cargarFiados() }
-    else showToast(res.error || "Error", "err")
+    // Abrir el modal de abono pre-rellenado con el saldo completo
+    const pendiente = f.monto_total - f.monto_pagado
+    setAbonoModal(f)
+    setAbonoMonto(pendiente.toString())
+    setAbonoNotas("Pago total")
+    setAbonoMetodo("efectivo")
+    setAbonoBanco("")
   }
 
   const handleDeleteFiado = async (id: string) => {
@@ -2173,7 +2196,11 @@ export default function SalonPOS() {
             </div>
 
             {/* ── Modal abono ── */}
-            {abonoModal && (
+            {abonoModal && (() => {
+              const pendiente = abonoModal.monto_total - abonoModal.monto_pagado
+              const monto = parseFloat(abonoMonto) || 0
+              const montoConTarjeta = abonoMetodo === "tarjeta" ? Math.round(monto * 1.05 * 100) / 100 : monto
+              return (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
                 onClick={() => setAbonoModal(null)}>
                 <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm space-y-4"
@@ -2184,7 +2211,7 @@ export default function SalonPOS() {
                   </div>
                   <div className="rounded-xl bg-violet-50 border border-violet-100 px-4 py-3 flex justify-between text-sm">
                     <span className="text-violet-600">Saldo pendiente</span>
-                    <span className="font-bold text-violet-700">{formatCurrency(abonoModal.monto_total - abonoModal.monto_pagado)}</span>
+                    <span className="font-bold text-violet-700">{formatCurrency(pendiente)}</span>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Monto del abono (RD$) *</label>
@@ -2193,6 +2220,55 @@ export default function SalonPOS() {
                       placeholder="0.00" autoFocus
                       className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
                   </div>
+
+                  {/* Método de pago */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Método de pago *</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["efectivo", "tarjeta", "transferencia"] as const).map(m => (
+                        <button key={m} type="button"
+                          onClick={() => { setAbonoMetodo(m); setAbonoBanco("") }}
+                          className={cn(
+                            "rounded-xl border-2 py-2.5 text-xs font-semibold transition-all capitalize",
+                            abonoMetodo === m
+                              ? m === "efectivo" ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                              : m === "tarjeta" ? "border-sky-500 bg-sky-50 text-sky-700"
+                              : "border-violet-500 bg-violet-50 text-violet-700"
+                              : "border-gray-200 text-gray-500 hover:border-gray-300"
+                          )}>
+                          {m === "efectivo" ? "💵 Efectivo" : m === "tarjeta" ? "💳 Tarjeta" : "🏦 Transfer."}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Banco — solo si es transferencia */}
+                  {abonoMetodo === "transferencia" && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Banco de destino *</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {["Banco Popular", "Asociación Popular", "Banco de Reservas", "Banco BHD"].map(banco => (
+                          <label key={banco} className={cn(
+                            "flex items-center gap-2 rounded-xl border-2 py-2 px-3 cursor-pointer transition-all",
+                            abonoBanco === banco ? "border-violet-500 bg-violet-50" : "border-gray-200 hover:border-violet-300"
+                          )}>
+                            <input type="radio" name="abono_banco" checked={abonoBanco === banco}
+                              onChange={() => setAbonoBanco(banco)} className="accent-violet-500 h-3.5 w-3.5" />
+                            <span className={cn("text-xs font-medium", abonoBanco === banco ? "text-violet-700" : "text-gray-600")}>{banco}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Info tarjeta */}
+                  {abonoMetodo === "tarjeta" && monto > 0 && (
+                    <div className="rounded-xl bg-sky-50 border border-sky-100 px-4 py-3 flex justify-between text-sm">
+                      <span className="text-sky-600">Total con 5% tarjeta</span>
+                      <span className="font-bold text-sky-700">{formatCurrency(montoConTarjeta)}</span>
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Notas</label>
                     <input value={abonoNotas} onChange={e => setAbonoNotas(e.target.value)}
@@ -2200,7 +2276,7 @@ export default function SalonPOS() {
                       className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
                   </div>
                   <div className="flex gap-3">
-                    <button onClick={() => setAbonoModal(null)}
+                    <button onClick={() => { setAbonoModal(null); setAbonoMetodo("efectivo"); setAbonoBanco("") }}
                       className="flex-1 rounded-xl border border-gray-200 text-gray-600 py-2.5 text-sm font-medium hover:bg-gray-50 transition-all">
                       Cancelar
                     </button>
@@ -2211,7 +2287,8 @@ export default function SalonPOS() {
                   </div>
                 </div>
               </div>
-            )}
+              )
+            })()}
           </div>
         )
       }
@@ -2458,7 +2535,19 @@ export default function SalonPOS() {
       const { jsPDF } = await import("jspdf")
       const { default: autoTable } = await import("jspdf-autotable")
       const doc = new jsPDF()
-      const totalCom = comisiones.reduce((s, c) => s + c.comision_total, 0)
+
+      // Asegurar que los fiados estén cargados
+      let fiadosData = fiados
+      if (!fiadosLoaded) {
+        const res = await getFiadosAction()
+        if (res.success) fiadosData = res.fiados
+      }
+
+      const fiadosHoy = transactions.filter(t => t.metodo_pago === "fiado")
+      const montoFiadosHoy = fiadosHoy.reduce((s, t) => s + t.monto_servicio, 0)
+      const totalVentas = transactions.length
+      const fiadosPendientes = fiadosData.filter(f => !f.saldado)
+      const fiadosSaldados = fiadosData.filter(f => f.saldado)
 
       doc.setFontSize(20); doc.setFont("helvetica","bold")
       doc.text("Reporte Diario — Salón de Belleza", 20, 25)
@@ -2466,25 +2555,24 @@ export default function SalonPOS() {
       doc.text(`Fecha: ${dateFormatted}`, 20, 35)
       doc.text(`Generado: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 20, 42)
 
+      // ── Resumen financiero ──
       autoTable(doc, {
         startY: 55,
         head: [["Concepto","Monto"]],
         body: [
+          ["Total de Ventas del Dia", `${totalVentas} venta${totalVentas !== 1 ? "s" : ""}`],
           ["Monto Inicial", formatCurrency(resumen.monto_inicial)],
           ["Total Efectivo", formatCurrency(resumen.total_efectivo)],
           ["Total Transferencias/Tarjeta", formatCurrency(resumen.total_transferencias)],
           ["Total Cambios", formatCurrency(resumen.total_devuelto)],
           ["Gastos Imprevistos", formatCurrency(resumen.total_gastos_imprevistos)],
           ["Total en Caja", formatCurrency(resumen.saldo_final)],
-          ["TOTAL GENERAL (Ventas)", formatCurrency(resumen.total_general)],
-          ["Total Comisiones", formatCurrency(totalCom)],
-          ["GANANCIA NETA DEL DÍA", formatCurrency(resumen.total_general - totalCom)],
+          ["GANANCIA NETA DEL DÍA", formatCurrency(resumen.total_general)],
         ],
         theme: "striped", styles: { fontSize: 10 },
         headStyles: { fillColor: [236,72,153] },
-        bodyStyles: { },
         didParseCell: (data: any) => {
-          if (data.row.index === 8) {
+          if (data.row.index === 7) {
             data.cell.styles.fontStyle = "bold"
             data.cell.styles.fillColor = [209, 250, 229]
             data.cell.styles.textColor = [6, 95, 70]
@@ -2492,9 +2580,60 @@ export default function SalonPOS() {
         },
       })
 
-      if (transactions.length > 0) {
+      // ── Fiados del día ──
+      let yF = (doc as any).lastAutoTable.finalY + 14
+      if (yF > 240) { doc.addPage(); yF = 20 }
+      doc.setFontSize(12); doc.setFont("helvetica", "bold")
+      doc.setTextColor(180, 60, 0)
+      doc.text("Fiados del Dia", 20, yF)
+      doc.setTextColor(0, 0, 0)
+
+      autoTable(doc, {
+        startY: yF + 4,
+        head: [["Concepto", "Valor"]],
+        body: [
+          ["Clientes que cogieron fiado hoy", `${fiadosHoy.length} cliente${fiadosHoy.length !== 1 ? "s" : ""}`],
+          ["Monto total fiado hoy", formatCurrency(montoFiadosHoy)],
+          ["Fiados pendientes (total cartera)", `${fiadosPendientes.length} cliente${fiadosPendientes.length !== 1 ? "s" : ""}`],
+          ["Deuda pendiente total", fiadosPendientes.length > 0
+            ? formatCurrency(fiadosPendientes.reduce((s, f) => s + (f.monto_total - f.monto_pagado), 0))
+            : "RD$0.00 — Saldado"],
+          ["Fiados saldados (cartera total)", `${fiadosSaldados.length} cliente${fiadosSaldados.length !== 1 ? "s" : ""}`],
+        ],
+        theme: "striped", styles: { fontSize: 10 },
+        headStyles: { fillColor: [245, 158, 11], textColor: 255 },
+        didParseCell: (data: any) => {
+          if (data.section === "body" && data.row.index === 3) {
+            data.cell.styles.fontStyle = "bold"
+            data.cell.styles.textColor = fiadosPendientes.length > 0 ? [185, 28, 28] : [6, 95, 70]
+          }
+        },
+      })
+
+      // ── Detalle fiados del día (si los hay) ──
+      if (fiadosHoy.length > 0) {
+        let yD = (doc as any).lastAutoTable.finalY + 10
+        if (yD > 240) { doc.addPage(); yD = 20 }
         autoTable(doc, {
-          startY: (doc as any).lastAutoTable.finalY + 15,
+          startY: yD,
+          head: [["Cliente", "Servicio", "Monto", "Hora", "Empleada(s)"]],
+          body: fiadosHoy.map(t => [
+            t.cliente,
+            t.observaciones || "—",
+            formatCurrency(t.monto_servicio),
+            formatTime(t.hora),
+            (t.participaciones || []).map(p => p.empleada_nombre).join(", ") || "—",
+          ]),
+          theme: "striped", styles: { fontSize: 8 },
+          headStyles: { fillColor: [251, 191, 36], textColor: [0, 0, 0] },
+        })
+      }
+
+      if (transactions.length > 0) {
+        let yT = (doc as any).lastAutoTable?.finalY + 15 || 20
+        if (yT > 240) { doc.addPage(); yT = 20 }
+        autoTable(doc, {
+          startY: yT,
           head: [["Cliente","Hora","Método","Banco","Servicio","Recibido","Cambio","Empleada(s)"]],
           body: transactions.map(t => [
             t.cliente, formatTime(t.hora), t.metodo_pago,
@@ -2527,28 +2666,6 @@ export default function SalonPOS() {
         })
       }
 
-      // Fiados pendientes en el reporte
-      const fiadosPendientes = fiados.filter(f => !f.saldado)
-      if (fiadosPendientes.length > 0) {
-        const y2 = (doc as any).lastAutoTable?.finalY + 15 || 20
-        if (y2 > 240) doc.addPage()
-        doc.setFontSize(12); doc.setFont("helvetica", "bold")
-        doc.text("Fiados Pendientes", 20, y2 > 240 ? 20 : y2)
-        autoTable(doc, {
-          startY: (y2 > 240 ? 20 : y2) + 5,
-          head: [["Cliente","Descripción","Total","Pagado","Pendiente","Desde"]],
-          body: fiadosPendientes.map(f => [
-            f.cliente_nombre, f.descripcion || "—",
-            formatCurrency(f.monto_total), formatCurrency(f.monto_pagado),
-            formatCurrency(f.monto_total - f.monto_pagado), f.fecha,
-          ]),
-          theme: "striped", styles: { fontSize: 8 },
-          headStyles: { fillColor: [245, 158, 11] },
-          foot: [["TOTAL PENDIENTE", "", "", "", formatCurrency(fiadosPendientes.reduce((s, f) => s + (f.monto_total - f.monto_pagado), 0)), ""]],
-          footStyles: { fontStyle: "bold", fillColor: [254, 243, 199], textColor: [146, 64, 14] },
-        })
-      }
-
       doc.save(`salon-reporte-${selectedDate}.pdf`)
     } catch (e) { showToast("Error al generar PDF", "err") }
   }
@@ -2557,21 +2674,39 @@ export default function SalonPOS() {
     try {
       const XLSX = await import("xlsx")
       const wb = XLSX.utils.book_new()
-      const totalCom = comisiones.reduce((s, c) => s + c.comision_total, 0)
+
+      // Asegurar que los fiados estén cargados
+      let fiadosData = fiados
+      if (!fiadosLoaded) {
+        const res = await getFiadosAction()
+        if (res.success) fiadosData = res.fiados
+      }
+
+      const fiadosHoy = transactions.filter(t => t.metodo_pago === "fiado")
+      const montoFiadosHoy = fiadosHoy.reduce((s, t) => s + t.monto_servicio, 0)
+      const fiadosPendientes = fiadosData.filter(f => !f.saldado)
+      const fiadosSaldados = fiadosData.filter(f => f.saldado)
+      const deudaPendiente = fiadosPendientes.reduce((s, f) => s + (f.monto_total - f.monto_pagado), 0)
 
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
         ["REPORTE SALÓN DE BELLEZA"],
         [`Fecha: ${dateFormatted}`], [],
-        ["Concepto","Monto"],
+        ["Concepto","Valor"],
+        ["Total de Ventas del Dia", transactions.length],
         ["Monto Inicial", resumen.monto_inicial],
         ["Total Efectivo", resumen.total_efectivo],
         ["Total Transferencias", resumen.total_transferencias],
         ["Cambios", resumen.total_devuelto],
         ["Gastos Imprevistos", resumen.total_gastos_imprevistos],
         ["Total Caja", resumen.saldo_final],
-        ["TOTAL GENERAL (Ventas)", resumen.total_general],
-        ["Total Comisiones", totalCom],
-        ["GANANCIA NETA DEL DÍA", resumen.total_general - totalCom],
+        ["GANANCIA NETA DEL DÍA", resumen.total_general],
+        [],
+        ["FIADOS DEL DÍA"],
+        ["Clientes que cogieron fiado hoy", fiadosHoy.length],
+        ["Monto total fiado hoy", montoFiadosHoy],
+        ["Fiados pendientes (cartera)", fiadosPendientes.length],
+        ["Deuda pendiente total", deudaPendiente > 0 ? deudaPendiente : "0 — Saldado"],
+        ["Fiados saldados", fiadosSaldados.length],
       ]), "Resumen")
 
       if (transactions.length > 0) {
@@ -2597,19 +2732,29 @@ export default function SalonPOS() {
         ]), "Comisiones")
       }
 
-      const fiadosPendientesXls = fiados.filter(f => !f.saldado)
-      if (fiadosPendientesXls.length > 0) {
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-          ["FIADOS PENDIENTES"],
-          [`Total por cobrar: ${formatCurrency(fiadosPendientesXls.reduce((s, f) => s + (f.monto_total - f.monto_pagado), 0))}`], [],
-          ["Cliente","Descripción","Total","Pagado","Pendiente","Desde"],
-          ...fiadosPendientesXls.map(f => [
-            f.cliente_nombre, f.descripcion || "—",
-            f.monto_total, f.monto_pagado,
-            f.monto_total - f.monto_pagado, f.fecha,
-          ]),
-        ]), "Fiados Pendientes")
-      }
+      // Fiados del día + cartera completa
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+        ["FIADOS DEL DÍA"],
+        [`Clientes que cogieron fiado hoy: ${fiadosHoy.length}`],
+        [`Monto total fiado hoy: ${formatCurrency(montoFiadosHoy)}`], [],
+        ["Cliente", "Servicio", "Monto", "Hora", "Empleada(s)"],
+        ...fiadosHoy.map(t => [
+          t.cliente, t.observaciones || "—", t.monto_servicio,
+          t.hora, (t.participaciones || []).map(p => p.empleada_nombre).join(", ") || "—",
+        ]),
+        [],
+        ["CARTERA DE FIADOS"],
+        [`Pendientes: ${fiadosPendientes.length} clientes — Deuda total: ${deudaPendiente > 0 ? formatCurrency(deudaPendiente) : "RD$0.00 — Saldado"}`],
+        [`Saldados: ${fiadosSaldados.length} clientes`], [],
+        ["Cliente", "Descripcion", "Total", "Pagado", "Pendiente", "Estado", "Desde"],
+        ...[...fiadosPendientes, ...fiadosSaldados].map(f => [
+          f.cliente_nombre, f.descripcion || "—",
+          f.monto_total, f.monto_pagado,
+          f.monto_total - f.monto_pagado,
+          f.saldado ? "Saldado" : "Pendiente",
+          f.fecha,
+        ]),
+      ]), "Fiados")
 
       XLSX.writeFile(wb, `salon-reporte-${selectedDate}.xlsx`)
     } catch (e) { showToast("Error al generar Excel", "err") }
