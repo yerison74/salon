@@ -691,33 +691,28 @@ export default function SalonPOS() {
             </div>
 
             {/* Ganancia Neta del Día */}
-            {(() => {
-              const gananciaNeta = resumen.total_general - totalComisiones
-              return (
-                <div className="rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 p-6 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <TrendingUp className="h-5 w-5 text-emerald-500" />
-                        <span className="text-sm font-bold text-emerald-700 uppercase tracking-wide">Ganancia Neta del Día</span>
-                      </div>
-                      <div className="text-4xl font-black text-emerald-700 mt-1">{formatCurrency(gananciaNeta)}</div>
-                      <p className="text-xs text-emerald-500 mt-2">Total ventas − Comisiones</p>
-                    </div>
-                    <div className="text-right space-y-2">
-                      <div className="rounded-xl bg-white/70 px-4 py-2 text-right">
-                        <div className="text-xs text-gray-400">Ventas brutas</div>
-                        <div className="font-bold text-gray-700">{formatCurrency(resumen.total_general)}</div>
-                      </div>
-                      <div className="rounded-xl bg-white/70 px-4 py-2 text-right">
-                        <div className="text-xs text-rose-400">− Comisiones</div>
-                        <div className="font-bold text-rose-500">−{formatCurrency(totalComisiones)}</div>
-                      </div>
-                    </div>
+            <div className="rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 p-6 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingUp className="h-5 w-5 text-emerald-500" />
+                    <span className="text-sm font-bold text-emerald-700 uppercase tracking-wide">Ganancia Neta del Día</span>
+                  </div>
+                  <div className="text-4xl font-black text-emerald-700 mt-1">{formatCurrency(resumen.total_general)}</div>
+                  <p className="text-xs text-emerald-500 mt-2">Total general del día</p>
+                </div>
+                <div className="text-right space-y-2">
+                  <div className="rounded-xl bg-white/70 px-4 py-2 text-right">
+                    <div className="text-xs text-gray-400">Efectivo</div>
+                    <div className="font-bold text-gray-700">{formatCurrency(resumen.total_efectivo)}</div>
+                  </div>
+                  <div className="rounded-xl bg-white/70 px-4 py-2 text-right">
+                    <div className="text-xs text-gray-400">Transferencias</div>
+                    <div className="font-bold text-gray-700">{formatCurrency(resumen.total_transferencias)}</div>
                   </div>
                 </div>
-              )
-            })()}
+              </div>
+            </div>
 
             {/* Fiados del día */}
             {ventasPorMetodo.fiado > 0 && (() => {
@@ -743,23 +738,6 @@ export default function SalonPOS() {
                       <div className="text-xs text-rose-400 font-medium">Monto fiado hoy</div>
                       <div className="font-black text-rose-600 text-xl mt-1">{formatCurrency(montoFiadosHoy)}</div>
                     </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    {fiadosHoy.map(t => (
-                      <div key={t.id} className="flex items-center gap-3 rounded-xl bg-white/70 px-3 py-2">
-                        <div className="h-7 w-7 rounded-full bg-rose-200 flex items-center justify-center flex-shrink-0">
-                          <span className="text-rose-700 font-bold text-xs">{t.cliente.charAt(0).toUpperCase()}</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-800 truncate">{t.cliente}</div>
-                          {t.observaciones && <div className="text-xs text-gray-400 truncate">{t.observaciones}</div>}
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <div className="text-sm font-bold text-rose-500">{formatCurrency(t.monto_servicio)}</div>
-                          <div className="text-xs text-gray-400">{formatTime(t.hora)}</div>
-                        </div>
-                      </div>
-                    ))}
                   </div>
                 </div>
               )
