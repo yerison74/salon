@@ -236,6 +236,99 @@ export default function SalonPOS() {
     else showToast(res.error || "Error", "err")
   }
 
+  const exportarFiadoPDF = async (f: Fiado) => {
+    try {
+      const { jsPDF } = await import("jspdf")
+      const { default: autoTable } = await import("jspdf-autotable")
+      const doc = new jsPDF()
+      const txRes = await getTransaccionesClienteAction(f.cliente_nombre, f.fecha, f.created_at, f.transaccion_ids)
+      const txCliente = txRes.transacciones || []
+
+      doc.setFillColor(139, 92, 246)
+      doc.rect(0, 0, 210, 40, "F")
+      doc.setTextColor(255, 255, 255)
+      doc.setFontSize(20); doc.setFont("helvetica", "bold")
+      doc.text("Estado de Cuenta", 20, 18)
+      doc.setFontSize(13); doc.setFont("helvetica", "normal")
+      doc.text(f.cliente_nombre, 20, 30)
+      doc.setFontSize(9)
+      doc.text(`Generado: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 140, 18)
+      doc.text(`Desde: ${f.fecha}`, 140, 26)
+      doc.setTextColor(0, 0, 0)
+
+      let y = 52
+      doc.setFontSize(11); doc.setFont("helvetica", "bold")
+      doc.setTextColor(80, 80, 80)
+      doc.text("RESUMEN DE CUENTA", 20, y); y += 4
+
+      autoTable(doc, {
+        startY: y,
+        head: [["Concepto", "Monto"]],
+        body: [
+          ["Total fiado (deuda acumulada)", formatCurrency(f.monto_total)],
+          ["Total pagado (abonos)", formatCurrency(f.monto_pagado)],
+          ["Saldo pendiente", formatCurrency(f.monto_total - f.monto_pagado)],
+          ["Estado", f.saldado ? "Saldado" : "Pendiente"],
+          ...(f.notas ? [["Notas", f.notas]] : []),
+        ],
+        theme: "striped", styles: { fontSize: 10 },
+        headStyles: { fillColor: [139, 92, 246], textColor: 255 },
+        columnStyles: { 0: { fontStyle: "bold", cellWidth: 110 }, 1: { cellWidth: 60 } },
+      })
+
+      if (txCliente.length > 0) {
+        y = (doc as any).lastAutoTable.finalY + 14
+        if (y > 240) { doc.addPage(); y = 20 }
+        doc.setFontSize(11); doc.setFont("helvetica", "bold")
+        doc.setTextColor(80, 80, 80)
+        doc.text(`HISTORIAL DE VISITAS (${txCliente.length})`, 20, y); y += 4
+        autoTable(doc, {
+          startY: y,
+          head: [["Fecha", "Hora", "Servicio / Descripción", "Quien atendió", "Monto", "Método"]],
+          body: txCliente.map(t => {
+            const empleadas = (t.participaciones || []).map((p: any) => p.empleada_nombre).join(", ") || "—"
+            const hora = t.hora ? t.hora.substring(0, 5) : "—"
+            const fecha = t.fecha ? format(parseISO(t.fecha), "dd/MM/yyyy") : "—"
+            const metodo = t.metodo_pago === "fiado" ? "Fiado" : t.metodo_pago === "efectivo" ? "Efectivo" : t.metodo_pago === "tarjeta" ? "Tarjeta" : "Transferencia"
+            return [fecha, hora, t.observaciones?.trim() || "—", empleadas, formatCurrency(t.monto_servicio), metodo]
+          }),
+          theme: "striped", styles: { fontSize: 8, cellPadding: 3 },
+          headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: "bold" },
+          columnStyles: { 0: { cellWidth: 24 }, 1: { cellWidth: 16 }, 2: { cellWidth: 58 }, 3: { cellWidth: 38 }, 4: { cellWidth: 24 }, 5: { cellWidth: 22 } },
+          alternateRowStyles: { fillColor: [245, 243, 255] },
+        })
+      }
+
+      if ((f.abonos || []).length > 0) {
+        y = (doc as any).lastAutoTable.finalY + 14
+        if (y > 240) { doc.addPage(); y = 20 }
+        doc.setFontSize(11); doc.setFont("helvetica", "bold")
+        doc.setTextColor(80, 80, 80)
+        doc.text(`ABONOS REALIZADOS (${f.abonos!.length})`, 20, y); y += 4
+        autoTable(doc, {
+          startY: y,
+          head: [["#", "Fecha", "Monto abonado", "Notas"]],
+          body: (f.abonos || []).map((a, i) => [`#${i + 1}`, format(parseISO(a.fecha), "dd/MM/yyyy"), formatCurrency(a.monto), a.notas || "—"]),
+          theme: "striped", styles: { fontSize: 9 },
+          headStyles: { fillColor: [16, 185, 129], textColor: 255 },
+          columnStyles: { 0: { cellWidth: 12 }, 1: { cellWidth: 36 }, 2: { cellWidth: 40 }, 3: { cellWidth: 90 } },
+        })
+      }
+
+      const pageCount = (doc as any).internal.getNumberOfPages()
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i)
+        doc.setFontSize(8); doc.setFont("helvetica", "normal")
+        doc.setTextColor(150, 150, 150)
+        doc.text(`Página ${i} de ${pageCount}`, 105, 290, { align: "center" })
+        doc.text(`Salón · Estado de cuenta · ${f.cliente_nombre}`, 20, 290)
+      }
+      doc.save(`fiado-${f.cliente_nombre.replace(/\s+/g, "-")}.pdf`)
+    } catch (e) { console.error(e); showToast("Error al generar PDF", "err") }
+  }
+
+
+
   const exportFiadosPDF = async () => {
     try {
       const { jsPDF } = await import("jspdf")
@@ -255,13 +348,13 @@ export default function SalonPOS() {
           f.cliente_nombre, f.descripcion,
           formatCurrency(f.monto_total), formatCurrency(f.monto_pagado),
           formatCurrency(f.monto_total - f.monto_pagado),
-          f.fecha, f.saldado ? "✓ Saldado" : "Pendiente",
+          f.fecha, f.saldado ? "Saldado" : "Pendiente",
         ]),
         theme: "striped", styles: { fontSize: 9 },
         headStyles: { fillColor: [139, 92, 246] },
         didParseCell: (data: any) => {
           if (data.section === "body" && data.column.index === 6) {
-            if (data.cell.raw === "✓ Saldado") {
+            if (data.cell.raw === "Saldado") {
               data.cell.styles.textColor = [6, 95, 70]
               data.cell.styles.fontStyle = "bold"
             } else {
@@ -445,9 +538,10 @@ export default function SalonPOS() {
     // Si es fiado, registrar o acumular en la tabla de fiados
     if (res.success && newTx.metodo_pago === "fiado") {
       const descripcion = observacionesFinales || "Servicio"
+      const txId = res.transaction?.id
       if (fiadoSeleccionadoId) {
         // Acumular al fiado existente
-        await acumularFiadoAction(fiadoSeleccionadoId, newTx.monto_servicio, descripcion)
+        await acumularFiadoAction(fiadoSeleccionadoId, newTx.monto_servicio, descripcion, txId)
       } else {
         // Crear nuevo fiado
         await addFiadoAction({
@@ -455,6 +549,7 @@ export default function SalonPOS() {
           descripcion,
           monto_total: newTx.monto_servicio,
           notas: "",
+          transaccion_id: txId,
         })
       }
     }
@@ -619,6 +714,52 @@ export default function SalonPOS() {
                         <div className="font-bold text-rose-500">−{formatCurrency(totalComisiones)}</div>
                       </div>
                     </div>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Fiados del día */}
+            {ventasPorMetodo.fiado > 0 && (() => {
+              const fiadosHoy = transactions.filter(t => t.metodo_pago === "fiado")
+              const montoFiadosHoy = fiadosHoy.reduce((s, t) => s + t.monto_servicio, 0)
+              return (
+                <div className="rounded-2xl border-2 border-rose-200 bg-gradient-to-br from-rose-50 to-pink-50 p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Wallet className="h-5 w-5 text-rose-400" />
+                      <span className="text-sm font-bold text-rose-700 uppercase tracking-wide">Fiados del Día</span>
+                    </div>
+                    <button onClick={() => setSection("fiados")} className="text-xs text-rose-500 hover:text-rose-700 font-medium flex items-center gap-1">
+                      Ver fiados <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="rounded-xl bg-white/70 px-3 py-3 text-center">
+                      <div className="text-xs text-rose-400 font-medium">Clientes hoy</div>
+                      <div className="font-black text-rose-600 text-3xl">{fiadosHoy.length}</div>
+                    </div>
+                    <div className="rounded-xl bg-white/70 px-3 py-3 text-center">
+                      <div className="text-xs text-rose-400 font-medium">Monto fiado hoy</div>
+                      <div className="font-black text-rose-600 text-xl mt-1">{formatCurrency(montoFiadosHoy)}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    {fiadosHoy.map(t => (
+                      <div key={t.id} className="flex items-center gap-3 rounded-xl bg-white/70 px-3 py-2">
+                        <div className="h-7 w-7 rounded-full bg-rose-200 flex items-center justify-center flex-shrink-0">
+                          <span className="text-rose-700 font-bold text-xs">{t.cliente.charAt(0).toUpperCase()}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-800 truncate">{t.cliente}</div>
+                          {t.observaciones && <div className="text-xs text-gray-400 truncate">{t.observaciones}</div>}
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-sm font-bold text-rose-500">{formatCurrency(t.monto_servicio)}</div>
+                          <div className="text-xs text-gray-400">{formatTime(t.hora)}</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )
@@ -1933,175 +2074,8 @@ export default function SalonPOS() {
                 </div>
               </div>
 
-              {/* Export cliente específico — aparece solo cuando hay 1 cliente en búsqueda */}
-              {fiadosBusqueda.trim() !== "" && fiadosFiltrados.length === 1 && (() => {
-                const f = fiadosFiltrados[0]
-                const exportClientePDF = async () => {
-                  try {
-                    const { jsPDF } = await import("jspdf")
-                    const { default: autoTable } = await import("jspdf-autotable")
-                    const doc = new jsPDF()
-
-                    // Obtener transacciones del cliente
-                    const txRes = await getTransaccionesClienteAction(f.cliente_nombre, f.fecha, f.created_at)
-                    const txCliente = txRes.transacciones || []
-
-                    // ── Encabezado ──────────────────────────────────────
-                    doc.setFillColor(139, 92, 246)
-                    doc.rect(0, 0, 210, 40, "F")
-                    doc.setTextColor(255, 255, 255)
-                    doc.setFontSize(20); doc.setFont("helvetica", "bold")
-                    doc.text(`Estado de Cuenta`, 20, 18)
-                    doc.setFontSize(13); doc.setFont("helvetica", "normal")
-                    doc.text(f.cliente_nombre, 20, 30)
-                    doc.setFontSize(9)
-                    doc.text(`Generado: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 140, 18)
-                    doc.text(`Desde: ${f.fecha}`, 140, 26)
-                    doc.setTextColor(0, 0, 0)
-
-                    // ── Resumen financiero ───────────────────────────────
-                    let y = 52
-                    doc.setFontSize(11); doc.setFont("helvetica", "bold")
-                    doc.setTextColor(80, 80, 80)
-                    doc.text("RESUMEN DE CUENTA", 20, y)
-                    y += 4
-
-                    autoTable(doc, {
-                      startY: y,
-                      head: [["Concepto", "Monto"]],
-                      body: [
-                        ["Total fiado (deuda acumulada)", formatCurrency(f.monto_total)],
-                        ["Total pagado (abonos)", formatCurrency(f.monto_pagado)],
-                        ["Saldo pendiente", formatCurrency(f.monto_total - f.monto_pagado)],
-                        ["Estado", f.saldado ? "✓ Saldado" : "⏳ Pendiente"],
-                        ...(f.notas ? [["Notas", f.notas]] : []),
-                      ],
-                      theme: "striped",
-                      styles: { fontSize: 10 },
-                      headStyles: { fillColor: [139, 92, 246], textColor: 255 },
-                      columnStyles: { 0: { fontStyle: "bold", cellWidth: 110 }, 1: { cellWidth: 60 } },
-                    })
-
-                    // ── Historial de visitas / transacciones ─────────────
-                    if (txCliente.length > 0) {
-                      y = (doc as any).lastAutoTable.finalY + 14
-                      if (y > 240) { doc.addPage(); y = 20 }
-
-                      doc.setFontSize(11); doc.setFont("helvetica", "bold")
-                      doc.setTextColor(80, 80, 80)
-                      doc.text(`HISTORIAL DE VISITAS (${txCliente.length})`, 20, y)
-                      y += 4
-
-                      autoTable(doc, {
-                        startY: y,
-                        head: [["Fecha", "Hora", "Servicio / Descripción", "Quien atendió", "Monto", "Método"]],
-                        body: txCliente.map(t => {
-                          const empleadas = (t.participaciones || []).map((p: any) => p.empleada_nombre).join(", ") || "—"
-                          const descripcion = t.observaciones?.trim() || "—"
-                          const hora = t.hora ? t.hora.substring(0, 5) : "—"
-                          const fecha = t.fecha ? format(parseISO(t.fecha), "dd/MM/yyyy") : "—"
-                          const metodo = t.metodo_pago === "fiado" ? "Fiado" :
-                                         t.metodo_pago === "efectivo" ? "Efectivo" :
-                                         t.metodo_pago === "tarjeta" ? "Tarjeta" : "Transferencia"
-                          return [fecha, hora, descripcion, empleadas, formatCurrency(t.monto_servicio), metodo]
-                        }),
-                        theme: "striped",
-                        styles: { fontSize: 8, cellPadding: 3 },
-                        headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: "bold" },
-                        columnStyles: {
-                          0: { cellWidth: 24 },
-                          1: { cellWidth: 16 },
-                          2: { cellWidth: 58 },
-                          3: { cellWidth: 38 },
-                          4: { cellWidth: 24 },
-                          5: { cellWidth: 22 },
-                        },
-                        alternateRowStyles: { fillColor: [245, 243, 255] },
-                      })
-                    }
-
-                    // ── Abonos realizados ────────────────────────────────
-                    if ((f.abonos || []).length > 0) {
-                      y = (doc as any).lastAutoTable.finalY + 14
-                      if (y > 240) { doc.addPage(); y = 20 }
-
-                      doc.setFontSize(11); doc.setFont("helvetica", "bold")
-                      doc.setTextColor(80, 80, 80)
-                      doc.text(`ABONOS REALIZADOS (${f.abonos!.length})`, 20, y)
-                      y += 4
-
-                      autoTable(doc, {
-                        startY: y,
-                        head: [["#", "Fecha", "Monto abonado", "Notas"]],
-                        body: (f.abonos || []).map((a, i) => [
-                          `#${i + 1}`,
-                          format(parseISO(a.fecha), "dd/MM/yyyy"),
-                          formatCurrency(a.monto),
-                          a.notas || "—",
-                        ]),
-                        theme: "striped",
-                        styles: { fontSize: 9 },
-                        headStyles: { fillColor: [16, 185, 129], textColor: 255 },
-                        columnStyles: {
-                          0: { cellWidth: 12 },
-                          1: { cellWidth: 36 },
-                          2: { cellWidth: 40 },
-                          3: { cellWidth: 90 },
-                        },
-                      })
-                    }
-
-                    // ── Pie de página ────────────────────────────────────
-                    const pageCount = (doc as any).internal.getNumberOfPages()
-                    for (let i = 1; i <= pageCount; i++) {
-                      doc.setPage(i)
-                      doc.setFontSize(8); doc.setFont("helvetica", "normal")
-                      doc.setTextColor(150, 150, 150)
-                      doc.text(`Página ${i} de ${pageCount}`, 105, 290, { align: "center" })
-                      doc.text(`Salón · Estado de cuenta · ${f.cliente_nombre}`, 20, 290)
-                    }
-
-                    doc.save(`fiado-${f.cliente_nombre.replace(/\s+/g, "-")}.pdf`)
-                  } catch (e) { console.error(e); showToast("Error al generar PDF", "err") }
-                }
-                const exportClienteExcel = async () => {
-                  try {
-                    const XLSX = await import("xlsx")
-                    const wb = XLSX.utils.book_new()
-                    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-                      [`Estado de cuenta — ${f.cliente_nombre}`],
-                      [`Generado: ${format(new Date(), "dd/MM/yyyy HH:mm")}`],
-                      [`Descripción: ${f.descripcion || "—"}`], [],
-                      ["Total fiado", f.monto_total],
-                      ["Total pagado", f.monto_pagado],
-                      ["Saldo pendiente", f.monto_total - f.monto_pagado],
-                      ["Estado", f.saldado ? "Saldado" : "Pendiente"], [],
-                      ["Fecha", "Abono", "Notas"],
-                      ...(f.abonos || []).map((a, i) => [`Abono #${i + 1} — ${a.fecha}`, a.monto, a.notas || ""]),
-                    ]), "Estado de cuenta")
-                    XLSX.writeFile(wb, `fiado-${f.cliente_nombre.replace(/\s+/g, "-")}.xlsx`)
-                  } catch { showToast("Error al generar Excel", "err") }
-                }
-                return (
-                  <div className="rounded-xl border-2 border-violet-200 bg-violet-50 p-3 flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-bold text-violet-600 uppercase tracking-wide">Exportar estado de cuenta</span>
-                      <p className="text-xs text-violet-500 mt-0.5">{f.cliente_nombre} · Pendiente: {formatCurrency(f.monto_total - f.monto_pagado)}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={exportClientePDF}
-                        className="flex items-center gap-1.5 rounded-lg bg-violet-500 hover:bg-violet-600 text-white px-3 py-2 text-xs font-semibold transition-all">
-                        <Download className="h-3.5 w-3.5" /> PDF
-                      </button>
-                      <button onClick={exportClienteExcel}
-                        className="flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 text-xs font-semibold transition-all">
-                        <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
-                      </button>
-                    </div>
-                  </div>
-                )
-              })()}
             </div>
+
 
             {/* ── Lista de fiados ── */}
             <div className="space-y-3">
@@ -2171,6 +2145,10 @@ export default function SalonPOS() {
                           className="rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 px-3 py-1.5 text-xs transition-all flex items-center gap-1 justify-center">
                           {isExp ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                           Historial
+                        </button>
+                        <button onClick={() => exportarFiadoPDF(f)}
+                          className="rounded-lg border border-violet-200 bg-violet-50 hover:bg-violet-100 text-violet-600 px-3 py-1.5 text-xs font-semibold transition-all flex items-center gap-1 justify-center">
+                          <Download className="h-3 w-3" /> PDF
                         </button>
                         <button onClick={() => handleDeleteFiado(f.id)}
                           className="rounded-lg text-gray-200 hover:text-red-400 transition-all flex items-center justify-center py-1">

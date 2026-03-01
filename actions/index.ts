@@ -392,12 +392,16 @@ export async function addFiadoAction(data: {
   descripcion: string
   monto_total: number
   notas?: string
+  transaccion_id?: string
 }) {
   try {
     const { error } = await supabase.from("fiados").insert({
-      ...data,
+      cliente_nombre: data.cliente_nombre,
+      descripcion: data.descripcion,
+      monto_total: data.monto_total,
       notas: data.notas || "",
       fecha: todayISO(),
+      transaccion_ids: data.transaccion_id ? [data.transaccion_id] : [],
     })
     if (error) throw error
     return { success: true }
@@ -452,8 +456,32 @@ export async function marcarSaldadoAction(fiado_id: string) {
 
 /** Acumula monto adicional a un fiado existente */
 /** Obtiene todas las transacciones de un cliente específico con sus participaciones */
-export async function getTransaccionesClienteAction(cliente_nombre: string, fecha_desde?: string, created_at_desde?: string) {
+export async function getTransaccionesClienteAction(cliente_nombre: string, fecha_desde?: string, created_at_desde?: string, transaccion_ids?: string[]) {
   try {
+    // Si tenemos IDs exactos, usarlos directamente — es la forma más precisa
+    if (transaccion_ids && transaccion_ids.length > 0) {
+      const { data: txs, error: txErr } = await supabase
+        .from("transacciones")
+        .select("*")
+        .in("id", transaccion_ids)
+        .order("fecha", { ascending: false })
+      if (txErr) throw txErr
+
+      const ids = (txs || []).map((t: any) => t.id)
+      let parts: Participacion[] = []
+      if (ids.length > 0) {
+        const { data: partData } = await supabase
+          .from("participaciones_empleadas").select("*").in("transaccion_id", ids)
+        parts = partData || []
+      }
+      const result = (txs || []).map((t: any) => ({
+        ...t,
+        participaciones: parts.filter((p: any) => p.transaccion_id === t.id),
+      }))
+      return { success: true, transacciones: result as Transaccion[] }
+    }
+
+    // Fallback: buscar por nombre y filtrar por timestamp
     let query = supabase
       .from("transacciones")
       .select("*")
@@ -466,9 +494,10 @@ export async function getTransaccionesClienteAction(cliente_nombre: string, fech
     if (txErr) throw txErr
 
     // Si hay timestamp exacto del fiado, filtrar solo transacciones >= ese momento
+    // Restamos 5 minutos de tolerancia porque la transacción se guarda antes que el fiado
     let filtradas = txs || []
     if (created_at_desde) {
-      const limite = new Date(created_at_desde).getTime()
+      const limite = new Date(created_at_desde).getTime() - (5 * 60 * 1000)
       filtradas = filtradas.filter((t: any) => {
         const tTime = new Date(t.created_at || `${t.fecha}T${t.hora || "00:00:00"}`).getTime()
         return tTime >= limite
@@ -495,18 +524,21 @@ export async function getTransaccionesClienteAction(cliente_nombre: string, fech
   }
 }
 
-export async function acumularFiadoAction(fiado_id: string, monto_adicional: number, descripcion_extra?: string) {
+export async function acumularFiadoAction(fiado_id: string, monto_adicional: number, descripcion_extra?: string, transaccion_id?: string) {
   try {
     const { data: fiado, error: getErr } = await supabase
-      .from("fiados").select("monto_total, descripcion").eq("id", fiado_id).single()
+      .from("fiados").select("monto_total, descripcion, transaccion_ids").eq("id", fiado_id).single()
     if (getErr) throw getErr
     const nuevo_total = (fiado?.monto_total ?? 0) + monto_adicional
     const nueva_descripcion = descripcion_extra
       ? `${fiado?.descripcion || ""} + ${descripcion_extra}`.trim()
       : fiado?.descripcion
+    const ids_actuales: string[] = fiado?.transaccion_ids || []
+    const nuevos_ids = transaccion_id ? [...ids_actuales, transaccion_id] : ids_actuales
     const { error } = await supabase.from("fiados").update({
       monto_total: nuevo_total,
       descripcion: nueva_descripcion,
+      transaccion_ids: nuevos_ids,
       saldado: false,
     }).eq("id", fiado_id)
     if (error) throw error

@@ -114,6 +114,7 @@ export interface Fiado {
   fecha_saldado?: string | null
   notas: string
   created_at?: string
+  transaccion_ids?: string[]   // IDs de transacciones vinculadas a esta deuda
   // join opcional
   abonos?: AbonoFiado[]
 }
