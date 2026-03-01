@@ -257,6 +257,7 @@ export default function SalonPOS() {
   const handleAddTransaction = async () => {
     if (!newTx.cliente.trim()) return showToast("Nombre del cliente requerido", "err")
     if (newTx.monto_servicio <= 0) return showToast("Ingresa el monto del servicio", "err")
+    if (newTx.metodo_pago === "efectivo" && newTx.monto_recibido <= 0) return showToast("Ingresa el monto recibido", "err")
     if (newTx.metodo_pago === "transferencia" && !bancoSeleccionado) return showToast("Selecciona el banco de destino", "err")
 
     setSaving(true)
@@ -665,11 +666,23 @@ export default function SalonPOS() {
               {newTx.metodo_pago === "efectivo" && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Monto Recibido (RD$)</label>
-                    <input type="number" min="0" value={newTx.monto_recibido || ""}
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                      Monto Recibido (RD$) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number" min="0"
+                      value={newTx.monto_recibido || ""}
                       onChange={e => setNewTx({ ...newTx, monto_recibido: parseFloat(e.target.value) || 0 })}
                       placeholder="0.00"
-                      className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                      className={cn(
+                        "w-full rounded-xl border px-4 py-2.5 text-sm focus:outline-none focus:ring-2",
+                        newTx.monto_recibido > 0
+                          ? "border-gray-200 focus:ring-pink-300"
+                          : "border-rose-300 bg-rose-50 focus:ring-rose-300"
+                      )} />
+                    {newTx.monto_recibido <= 0 && (
+                      <p className="text-xs text-rose-500 mt-1">Requerido</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Cambio a devolver</label>
@@ -812,9 +825,20 @@ export default function SalonPOS() {
                 </div>
               )}
 
+              {newTx.metodo_pago === "efectivo" && newTx.monto_recibido <= 0 && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 flex items-center gap-2 text-rose-600 text-sm font-medium">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  Debes ingresar el monto recibido antes de registrar la venta
+                </div>
+              )}
+
               <button
                 onClick={handleAddTransaction}
-                disabled={saving || (newTx.metodo_pago === "transferencia" && !bancoSeleccionado)}
+                disabled={
+                  saving ||
+                  (newTx.metodo_pago === "transferencia" && !bancoSeleccionado) ||
+                  (newTx.metodo_pago === "efectivo" && newTx.monto_recibido <= 0)
+                }
                 className="w-full rounded-xl bg-gradient-to-r from-rose-400 to-pink-500 text-white py-3 font-semibold text-sm shadow-lg hover:shadow-xl hover:from-rose-500 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
                 {saving ? "Registrando..." : "Registrar Venta"}
               </button>
