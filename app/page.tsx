@@ -598,6 +598,61 @@ export default function SalonPOS() {
               )
             })()}
 
+            {/* Fiados pendientes */}
+            {fiados.filter(f => !f.saldado).length > 0 && (
+              <div className="rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="h-5 w-5 text-amber-500" />
+                    <span className="text-sm font-bold text-amber-700 uppercase tracking-wide">Fiados Pendientes</span>
+                  </div>
+                  <button onClick={() => setSection("fiados")} className="text-xs text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1">
+                    Ver todos <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div className="rounded-xl bg-white/70 px-3 py-2 text-center">
+                    <div className="text-xs text-amber-500">Clientes</div>
+                    <div className="font-bold text-amber-700 text-lg">{fiados.filter(f => !f.saldado).length}</div>
+                  </div>
+                  <div className="rounded-xl bg-white/70 px-3 py-2 text-center">
+                    <div className="text-xs text-amber-500">Por cobrar</div>
+                    <div className="font-bold text-amber-700 text-lg">{formatCurrency(fiados.filter(f => !f.saldado).reduce((s, f) => s + (f.monto_total - f.monto_pagado), 0))}</div>
+                  </div>
+                  <div className="rounded-xl bg-white/70 px-3 py-2 text-center">
+                    <div className="text-xs text-amber-500">Saldados</div>
+                    <div className="font-bold text-emerald-600 text-lg">{fiados.filter(f => f.saldado).length}</div>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  {fiados.filter(f => !f.saldado).slice(0, 4).map(f => {
+                    const pendiente = f.monto_total - f.monto_pagado
+                    const pct = Math.min(100, Math.round((f.monto_pagado / f.monto_total) * 100))
+                    return (
+                      <div key={f.id} className="flex items-center gap-3 rounded-xl bg-white/70 px-3 py-2">
+                        <div className="h-7 w-7 rounded-full bg-amber-200 flex items-center justify-center flex-shrink-0">
+                          <span className="text-amber-700 font-bold text-xs">{f.cliente_nombre.charAt(0).toUpperCase()}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-800 truncate">{f.cliente_nombre}</div>
+                          <div className="h-1 rounded-full bg-amber-100 mt-1">
+                            <div className="h-full rounded-full bg-amber-400" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-xs font-bold text-rose-500">{formatCurrency(pendiente)}</div>
+                          <div className="text-xs text-gray-400">de {formatCurrency(f.monto_total)}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {fiados.filter(f => !f.saldado).length > 4 && (
+                    <p className="text-xs text-amber-500 text-center pt-1">+{fiados.filter(f => !f.saldado).length - 4} más…</p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Comisiones del día — resumen rápido */}
             {comisiones.filter(c => c.comision_total > 0).length > 0 && (
               <div className="rounded-2xl border border-rose-100 bg-rose-50 overflow-hidden">
@@ -1738,50 +1793,10 @@ export default function SalonPOS() {
               </div>
             </div>
 
-            {/* ── Nuevo fiado ── */}
-            <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-5 space-y-4">
-              <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                <Wallet className="h-5 w-5 text-violet-400" /> Registrar Nuevo Fiado
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Cliente *</label>
-                  <input value={nuevoFiado.cliente_nombre}
-                    onChange={e => setNuevoFiado({ ...nuevoFiado, cliente_nombre: e.target.value })}
-                    placeholder="Nombre del cliente"
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Monto (RD$) *</label>
-                  <input type="number" min="0" value={nuevoFiado.monto_total}
-                    onChange={e => setNuevoFiado({ ...nuevoFiado, monto_total: e.target.value })}
-                    placeholder="0.00"
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Descripción del servicio</label>
-                <input value={nuevoFiado.descripcion}
-                  onChange={e => setNuevoFiado({ ...nuevoFiado, descripcion: e.target.value })}
-                  placeholder="¿Qué servicio se realizó?"
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Notas</label>
-                <input value={nuevoFiado.notas}
-                  onChange={e => setNuevoFiado({ ...nuevoFiado, notas: e.target.value })}
-                  placeholder="Observaciones adicionales…"
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300" />
-              </div>
-              <button onClick={handleAddFiado} disabled={saving}
-                className="w-full rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white py-3 font-semibold text-sm shadow hover:shadow-lg disabled:opacity-50 transition-all">
-                {saving ? "Registrando…" : "Registrar Fiado"}
-              </button>
-            </div>
-
             {/* ── Filtros + búsqueda + exportar ── */}
-            <div className="flex flex-wrap gap-2 items-center">
-              <div className="relative flex-1 min-w-40">
+            <div className="space-y-3">
+              {/* Búsqueda */}
+              <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input value={fiadosBusqueda} onChange={e => setFiadosBusqueda(e.target.value)}
                   placeholder="Buscar cliente…"
@@ -1792,24 +1807,106 @@ export default function SalonPOS() {
                   </button>
                 )}
               </div>
-              {(["pendientes","todos","saldados"] as const).map(f => (
-                <button key={f} onClick={() => setFiadosFiltro(f)}
-                  className={cn("rounded-xl px-4 py-2.5 text-sm font-medium transition-all capitalize",
-                    fiadosFiltro === f
-                      ? "bg-violet-500 text-white shadow"
-                      : "border border-gray-200 bg-white text-gray-500 hover:border-violet-300"
-                  )}>
-                  {f === "pendientes" ? "Pendientes" : f === "saldados" ? "Saldados" : "Todos"}
-                </button>
-              ))}
-              <button onClick={exportFiadosPDF}
-                className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-all">
-                <Download className="h-4 w-4 text-violet-400" /> PDF
-              </button>
-              <button onClick={exportFiadosExcel}
-                className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-all">
-                <FileSpreadsheet className="h-4 w-4 text-emerald-400" /> Excel
-              </button>
+
+              {/* Filtros + exportar todos */}
+              <div className="flex flex-wrap gap-2 items-center">
+                {(["pendientes","todos","saldados"] as const).map(f => (
+                  <button key={f} onClick={() => setFiadosFiltro(f)}
+                    className={cn("rounded-xl px-4 py-2.5 text-sm font-medium transition-all",
+                      fiadosFiltro === f
+                        ? "bg-violet-500 text-white shadow"
+                        : "border border-gray-200 bg-white text-gray-500 hover:border-violet-300"
+                    )}>
+                    {f === "pendientes" ? "Pendientes" : f === "saldados" ? "Saldados" : "Todos"}
+                  </button>
+                ))}
+                <div className="ml-auto flex gap-2">
+                  <button onClick={exportFiadosPDF}
+                    className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-all">
+                    <Download className="h-4 w-4 text-violet-400" /> PDF todos
+                  </button>
+                  <button onClick={exportFiadosExcel}
+                    className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-all">
+                    <FileSpreadsheet className="h-4 w-4 text-emerald-400" /> Excel todos
+                  </button>
+                </div>
+              </div>
+
+              {/* Export cliente específico — aparece solo cuando hay 1 cliente en búsqueda */}
+              {fiadosBusqueda.trim() !== "" && fiadosFiltrados.length === 1 && (() => {
+                const f = fiadosFiltrados[0]
+                const exportClientePDF = async () => {
+                  try {
+                    const { jsPDF } = await import("jspdf")
+                    const { default: autoTable } = await import("jspdf-autotable")
+                    const doc = new jsPDF()
+                    doc.setFontSize(18); doc.setFont("helvetica", "bold")
+                    doc.text(`Estado de cuenta — ${f.cliente_nombre}`, 20, 22)
+                    doc.setFontSize(10); doc.setFont("helvetica", "normal")
+                    doc.text(`Generado: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 20, 32)
+                    doc.text(`Descripción: ${f.descripcion || "—"}`, 20, 39)
+                    doc.text(`Desde: ${f.fecha}`, 20, 46)
+                    autoTable(doc, {
+                      startY: 58,
+                      head: [["Concepto", "Monto"]],
+                      body: [
+                        ["Total fiado", formatCurrency(f.monto_total)],
+                        ["Total pagado", formatCurrency(f.monto_pagado)],
+                        ["Saldo pendiente", formatCurrency(f.monto_total - f.monto_pagado)],
+                        ["Estado", f.saldado ? "✓ Saldado" : "Pendiente"],
+                      ],
+                      theme: "striped", styles: { fontSize: 10 },
+                      headStyles: { fillColor: [139, 92, 246] },
+                    })
+                    if ((f.abonos || []).length > 0) {
+                      autoTable(doc, {
+                        startY: (doc as any).lastAutoTable.finalY + 12,
+                        head: [["Fecha", "Abono", "Notas"]],
+                        body: (f.abonos || []).map((a, i) => [`Abono #${i + 1} — ${a.fecha}`, formatCurrency(a.monto), a.notas || "—"]),
+                        theme: "striped", styles: { fontSize: 9 },
+                        headStyles: { fillColor: [107, 114, 128] },
+                      })
+                    }
+                    doc.save(`fiado-${f.cliente_nombre.replace(/\s+/g, "-")}.pdf`)
+                  } catch { showToast("Error al generar PDF", "err") }
+                }
+                const exportClienteExcel = async () => {
+                  try {
+                    const XLSX = await import("xlsx")
+                    const wb = XLSX.utils.book_new()
+                    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+                      [`Estado de cuenta — ${f.cliente_nombre}`],
+                      [`Generado: ${format(new Date(), "dd/MM/yyyy HH:mm")}`],
+                      [`Descripción: ${f.descripcion || "—"}`], [],
+                      ["Total fiado", f.monto_total],
+                      ["Total pagado", f.monto_pagado],
+                      ["Saldo pendiente", f.monto_total - f.monto_pagado],
+                      ["Estado", f.saldado ? "Saldado" : "Pendiente"], [],
+                      ["Fecha", "Abono", "Notas"],
+                      ...(f.abonos || []).map((a, i) => [`Abono #${i + 1} — ${a.fecha}`, a.monto, a.notas || ""]),
+                    ]), "Estado de cuenta")
+                    XLSX.writeFile(wb, `fiado-${f.cliente_nombre.replace(/\s+/g, "-")}.xlsx`)
+                  } catch { showToast("Error al generar Excel", "err") }
+                }
+                return (
+                  <div className="rounded-xl border-2 border-violet-200 bg-violet-50 p-3 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-violet-600 uppercase tracking-wide">Exportar estado de cuenta</span>
+                      <p className="text-xs text-violet-500 mt-0.5">{f.cliente_nombre} · Pendiente: {formatCurrency(f.monto_total - f.monto_pagado)}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={exportClientePDF}
+                        className="flex items-center gap-1.5 rounded-lg bg-violet-500 hover:bg-violet-600 text-white px-3 py-2 text-xs font-semibold transition-all">
+                        <Download className="h-3.5 w-3.5" /> PDF
+                      </button>
+                      <button onClick={exportClienteExcel}
+                        className="flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 text-xs font-semibold transition-all">
+                        <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
+                      </button>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
 
             {/* ── Lista de fiados ── */}
@@ -2280,6 +2377,28 @@ export default function SalonPOS() {
         })
       }
 
+      // Fiados pendientes en el reporte
+      const fiadosPendientes = fiados.filter(f => !f.saldado)
+      if (fiadosPendientes.length > 0) {
+        const y2 = (doc as any).lastAutoTable?.finalY + 15 || 20
+        if (y2 > 240) doc.addPage()
+        doc.setFontSize(12); doc.setFont("helvetica", "bold")
+        doc.text("Fiados Pendientes", 20, y2 > 240 ? 20 : y2)
+        autoTable(doc, {
+          startY: (y2 > 240 ? 20 : y2) + 5,
+          head: [["Cliente","Descripción","Total","Pagado","Pendiente","Desde"]],
+          body: fiadosPendientes.map(f => [
+            f.cliente_nombre, f.descripcion || "—",
+            formatCurrency(f.monto_total), formatCurrency(f.monto_pagado),
+            formatCurrency(f.monto_total - f.monto_pagado), f.fecha,
+          ]),
+          theme: "striped", styles: { fontSize: 8 },
+          headStyles: { fillColor: [245, 158, 11] },
+          foot: [["TOTAL PENDIENTE", "", "", "", formatCurrency(fiadosPendientes.reduce((s, f) => s + (f.monto_total - f.monto_pagado), 0)), ""]],
+          footStyles: { fontStyle: "bold", fillColor: [254, 243, 199], textColor: [146, 64, 14] },
+        })
+      }
+
       doc.save(`salon-reporte-${selectedDate}.pdf`)
     } catch (e) { showToast("Error al generar PDF", "err") }
   }
@@ -2326,6 +2445,20 @@ export default function SalonPOS() {
             p.porcentaje, p.monto_base, p.comision
           ]))
         ]), "Comisiones")
+      }
+
+      const fiadosPendientesXls = fiados.filter(f => !f.saldado)
+      if (fiadosPendientesXls.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+          ["FIADOS PENDIENTES"],
+          [`Total por cobrar: ${formatCurrency(fiadosPendientesXls.reduce((s, f) => s + (f.monto_total - f.monto_pagado), 0))}`], [],
+          ["Cliente","Descripción","Total","Pagado","Pendiente","Desde"],
+          ...fiadosPendientesXls.map(f => [
+            f.cliente_nombre, f.descripcion || "—",
+            f.monto_total, f.monto_pagado,
+            f.monto_total - f.monto_pagado, f.fecha,
+          ]),
+        ]), "Fiados Pendientes")
       }
 
       XLSX.writeFile(wb, `salon-reporte-${selectedDate}.xlsx`)
