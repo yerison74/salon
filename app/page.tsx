@@ -1943,7 +1943,7 @@ export default function SalonPOS() {
                     const doc = new jsPDF()
 
                     // Obtener transacciones del cliente
-                    const txRes = await getTransaccionesClienteAction(f.cliente_nombre)
+                    const txRes = await getTransaccionesClienteAction(f.cliente_nombre, f.fecha)
                     const txCliente = txRes.transacciones || []
 
                     // ── Encabezado ──────────────────────────────────────

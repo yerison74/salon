@@ -3,7 +3,8 @@
 import { supabase } from "@/lib/supabase"
 import type {
   Transaccion, GastoImprevisto, ResumenDiario, Empleada,
-  Participacion, ParticipanteForm, ComisionEmpleada, PagoComision
+  Participacion, ParticipanteForm, ComisionEmpleada, PagoComision,
+  Fiado, AbonoFiado
 } from "@/lib/supabase"
 import { getPorcentaje } from "@/lib/supabase"
 import { todayISO, nowTimeISO, calcularComisionesPorEmpleada } from "@/lib/utils"
@@ -451,13 +452,17 @@ export async function marcarSaldadoAction(fiado_id: string) {
 
 /** Acumula monto adicional a un fiado existente */
 /** Obtiene todas las transacciones de un cliente específico con sus participaciones */
-export async function getTransaccionesClienteAction(cliente_nombre: string) {
+export async function getTransaccionesClienteAction(cliente_nombre: string, fecha_desde?: string) {
   try {
-    const { data: txs, error: txErr } = await supabase
+    let query = supabase
       .from("transacciones")
       .select("*")
       .ilike("cliente", cliente_nombre)
       .order("fecha", { ascending: false })
+
+    if (fecha_desde) query = query.gte("fecha", fecha_desde)
+
+    const { data: txs, error: txErr } = await query
     if (txErr) throw txErr
 
     const ids = (txs || []).map((t: any) => t.id)
