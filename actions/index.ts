@@ -449,6 +449,28 @@ export async function marcarSaldadoAction(fiado_id: string) {
   }
 }
 
+/** Acumula monto adicional a un fiado existente */
+export async function acumularFiadoAction(fiado_id: string, monto_adicional: number, descripcion_extra?: string) {
+  try {
+    const { data: fiado, error: getErr } = await supabase
+      .from("fiados").select("monto_total, descripcion").eq("id", fiado_id).single()
+    if (getErr) throw getErr
+    const nuevo_total = (fiado?.monto_total ?? 0) + monto_adicional
+    const nueva_descripcion = descripcion_extra
+      ? `${fiado?.descripcion || ""} + ${descripcion_extra}`.trim()
+      : fiado?.descripcion
+    const { error } = await supabase.from("fiados").update({
+      monto_total: nuevo_total,
+      descripcion: nueva_descripcion,
+      saldado: false,
+    }).eq("id", fiado_id)
+    if (error) throw error
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Error al acumular fiado" }
+  }
+}
+
 export async function deleteFiadoAction(fiado_id: string) {
   try {
     const { error } = await supabase.from("fiados").delete().eq("id", fiado_id)

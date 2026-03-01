@@ -23,7 +23,7 @@ import {
   addExpenseAction, deleteExpenseAction, getDatesWithActivity,
   getComisionesQuincenalesAction, registrarPagoComisionAction,
   registrarPagoTodosAction, getFiadosAction, addFiadoAction,
-  addAbonoAction, marcarSaldadoAction, deleteFiadoAction,
+  addAbonoAction, marcarSaldadoAction, deleteFiadoAction, acumularFiadoAction,
 } from "@/actions"
 import type { PagoComision, Fiado, AbonoFiado } from "@/lib/supabase"
 
@@ -173,6 +173,7 @@ export default function SalonPOS() {
   const [abonoMonto,      setAbonoMonto]      = useState("")
   const [abonoNotas,      setAbonoNotas]      = useState("")
   const [fiadosLoaded,    setFiadosLoaded]    = useState(false)
+  const [fiadoSeleccionadoId, setFiadoSeleccionadoId] = useState<string|null>(null)
 
   const cargarFiados = async () => {
     const res = await getFiadosAction()
@@ -380,7 +381,7 @@ export default function SalonPOS() {
   useEffect(() => { loadData(selectedDate) }, [selectedDate, loadData])
 
   // Cargar fiados al entrar a la sección
-  useEffect(() => { if (section === "fiados" && !fiadosLoaded) cargarFiados() }, [section])
+  useEffect(() => { if ((section === "fiados" || section === "nueva-transaccion") && !fiadosLoaded) cargarFiados() }, [section])
 
   // Cuando cambia la cantidad de participantes, ajustar el array
   useEffect(() => {
@@ -410,7 +411,16 @@ export default function SalonPOS() {
   // HANDLERS
   // ─────────────────────────────────────────────────────
   const handleAddTransaction = async () => {
-    if (!newTx.cliente.trim()) return showToast("Nombre del cliente requerido", "err")
+    // Si el método es fiado y hay un fiado seleccionado, usar su cliente_nombre
+    if (newTx.metodo_pago === "fiado" && fiadoSeleccionadoId && !newTx.cliente.trim()) {
+      const fiadoSel = fiados.find(f => f.id === fiadoSeleccionadoId)
+      if (fiadoSel) {
+        setNewTx(prev => ({ ...prev, cliente: fiadoSel.cliente_nombre }))
+      }
+    }
+    if (!newTx.cliente.trim() && !(newTx.metodo_pago === "fiado" && fiadoSeleccionadoId)) return showToast("Nombre del cliente requerido", "err")
+    const clienteNombre = newTx.cliente.trim() || fiados.find(f => f.id === fiadoSeleccionadoId)?.cliente_nombre || ""
+    if (!clienteNombre) return showToast("Nombre del cliente requerido", "err")
     if (newTx.monto_servicio <= 0) return showToast("Ingresa el monto del servicio", "err")
     if (newTx.metodo_pago === "efectivo" && newTx.monto_recibido <= 0) return showToast("Ingresa el monto recibido", "err")
     if (newTx.metodo_pago === "transferencia" && !bancoSeleccionado) return showToast("Selecciona el banco de destino", "err")
@@ -418,6 +428,7 @@ export default function SalonPOS() {
     setSaving(true)
     const res = await addTransactionAction({
       ...newTx,
+      cliente: clienteNombre,
       banco_transferencia: newTx.metodo_pago === "transferencia" ? bancoSeleccionado : "",
       monto_recibido: newTx.metodo_pago === "tarjeta" ? montoACobrar :
                       newTx.metodo_pago === "transferencia" ? newTx.monto_servicio :
@@ -426,25 +437,35 @@ export default function SalonPOS() {
       participantes: participantes.filter(p => p.empleada_nombre.trim() !== ""),
     })
 
-    // Si es fiado, también registrarlo en la tabla de fiados
+    // Si es fiado, registrar o acumular en la tabla de fiados
     if (res.success && newTx.metodo_pago === "fiado") {
-      await addFiadoAction({
-        cliente_nombre: newTx.cliente.trim(),
-        descripcion: newTx.observaciones.trim() || (serviciosSeleccionados.map(s => s.nombre).join(", ")) || "Servicio",
-        monto_total: newTx.monto_servicio,
-        notas: "",
-      })
+      const descripcion = newTx.observaciones.trim() || (serviciosSeleccionados.map(s => s.nombre).join(", ")) || "Servicio"
+      if (fiadoSeleccionadoId) {
+        // Acumular al fiado existente
+        await acumularFiadoAction(fiadoSeleccionadoId, newTx.monto_servicio, descripcion)
+      } else {
+        // Crear nuevo fiado
+        await addFiadoAction({
+          cliente_nombre: clienteNombre,
+          descripcion,
+          monto_total: newTx.monto_servicio,
+          notas: "",
+        })
+      }
     }
 
     setSaving(false)
     if (res.success) {
-      showToast(newTx.metodo_pago === "fiado" ? "Venta registrada y fiado creado ✓" : "Venta registrada ✓")
+      showToast(newTx.metodo_pago === "fiado"
+        ? (fiadoSeleccionadoId ? "Venta registrada y deuda acumulada ✓" : "Venta registrada y fiado creado ✓")
+        : "Venta registrada ✓")
       setNewTx({ cliente: "", metodo_pago: "efectivo", monto_recibido: 0, monto_servicio: 0, cambio_entregado: 0, observaciones: "" })
       setBancoSeleccionado("")
       setNumParticipantes(1)
       setParticipantes([emptyParticipante()])
       setServiciosSeleccionados([])
       setBusquedaNuevaVenta("")
+      setFiadoSeleccionadoId(null)
       setFiadosLoaded(false) // forzar recarga de fiados
       loadData(todayISO())
       setSection("transacciones")
@@ -924,16 +945,88 @@ export default function SalonPOS() {
                 </div>
               )}
 
-              {newTx.metodo_pago === "fiado" && (
-                <div className="rounded-xl border-2 border-amber-200 bg-amber-50 px-4 py-4 space-y-1">
-                  <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm">
-                    <Wallet className="h-4 w-4" /> Esta venta se registrará como fiado
+              {newTx.metodo_pago === "fiado" && (() => {
+                const pendientes = fiados.filter(f => !f.saldado)
+                const fiadoSel = pendientes.find(f => f.id === fiadoSeleccionadoId)
+                return (
+                  <div className="space-y-3">
+                    {pendientes.length > 0 && (
+                      <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                          <Wallet className="h-4 w-4" />
+                          Fiados pendientes — selecciona uno para acumular
+                        </div>
+                        <div className="space-y-2">
+                          {pendientes.map(f => {
+                            const pendiente = f.monto_total - f.monto_pagado
+                            const pct = Math.min(100, Math.round((f.monto_pagado / f.monto_total) * 100))
+                            const sel = fiadoSeleccionadoId === f.id
+                            return (
+                              <label key={f.id} className={cn(
+                                "flex items-center gap-3 rounded-xl border-2 px-4 py-3 cursor-pointer transition-all",
+                                sel ? "border-amber-500 bg-amber-100" : "border-amber-200 bg-white hover:border-amber-400"
+                              )}>
+                                <input
+                                  type="radio"
+                                  name="fiado_pendiente"
+                                  checked={sel}
+                                  onChange={() => {
+                                    setFiadoSeleccionadoId(f.id)
+                                    setNewTx(prev => ({ ...prev, cliente: f.cliente_nombre }))
+                                  }}
+                                  className="accent-amber-500 h-4 w-4 flex-shrink-0"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold text-gray-800 text-sm">{f.cliente_nombre}</div>
+                                  <div className="text-xs text-gray-500 truncate">{f.descripcion}</div>
+                                  {pct > 0 && (
+                                    <div className="h-1 rounded-full bg-amber-100 mt-1">
+                                      <div className="h-full rounded-full bg-amber-400" style={{ width: `${pct}%` }} />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                  <div className="text-xs text-gray-400">Debe</div>
+                                  <div className="text-sm font-bold text-rose-500">{formatCurrency(pendiente)}</div>
+                                  <div className="text-xs text-gray-400">{pct}% pagado</div>
+                                </div>
+                              </label>
+                            )
+                          })}
+                        </div>
+                        {fiadoSel && newTx.monto_servicio > 0 && (
+                          <div className="rounded-xl bg-amber-600 text-white px-4 py-2.5 text-sm flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                            <span>
+                              Se acumulará <strong>+{formatCurrency(newTx.monto_servicio)}</strong> al fiado de {fiadoSel.cliente_nombre}. Nueva deuda total: <strong>{formatCurrency((fiadoSel.monto_total - fiadoSel.monto_pagado) + newTx.monto_servicio)}</strong>
+                            </span>
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFiadoSeleccionadoId(null)
+                            setNewTx(prev => ({ ...prev, cliente: "" }))
+                          }}
+                          className="text-xs text-amber-600 hover:text-amber-800 underline"
+                        >
+                          {fiadoSeleccionadoId ? "Cancelar selección (crear nuevo fiado)" : "Ninguno seleccionado — se creará nuevo fiado"}
+                        </button>
+                      </div>
+                    )}
+                    {!fiadoSeleccionadoId && (
+                      <div className="rounded-xl border-2 border-amber-200 bg-amber-50 px-4 py-3 space-y-1">
+                        <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                          <Wallet className="h-4 w-4" /> Esta venta se registrará como fiado nuevo
+                        </div>
+                        <p className="text-xs text-amber-600">
+                          Se creará una deuda de <strong>{formatCurrency(newTx.monto_servicio || 0)}</strong> a nombre de <strong>{newTx.cliente || "el cliente"}</strong>.
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-xs text-amber-600">
-                    Se creará automáticamente una deuda de <strong>{formatCurrency(newTx.monto_servicio || 0)}</strong> a nombre de <strong>{newTx.cliente || "el cliente"}</strong>. Podrás registrar abonos desde la sección Fiados.
-                  </p>
-                </div>
-              )}
+                )
+              })()}
 
               {newTx.metodo_pago === "transferencia" && (
                 <div>
