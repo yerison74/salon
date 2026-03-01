@@ -450,6 +450,36 @@ export async function marcarSaldadoAction(fiado_id: string) {
 }
 
 /** Acumula monto adicional a un fiado existente */
+/** Obtiene todas las transacciones de un cliente específico con sus participaciones */
+export async function getTransaccionesClienteAction(cliente_nombre: string) {
+  try {
+    const { data: txs, error: txErr } = await supabase
+      .from("transacciones")
+      .select("*")
+      .ilike("cliente", cliente_nombre)
+      .order("fecha", { ascending: false })
+    if (txErr) throw txErr
+
+    const ids = (txs || []).map((t: any) => t.id)
+    let parts: Participacion[] = []
+    if (ids.length > 0) {
+      const { data: partData } = await supabase
+        .from("participaciones_empleadas")
+        .select("*")
+        .in("transaccion_id", ids)
+      parts = partData || []
+    }
+
+    const result = (txs || []).map((t: any) => ({
+      ...t,
+      participaciones: parts.filter((p: any) => p.transaccion_id === t.id),
+    }))
+    return { success: true, transacciones: result as Transaccion[] }
+  } catch (error: any) {
+    return { success: false, transacciones: [], error: error?.message }
+  }
+}
+
 export async function acumularFiadoAction(fiado_id: string, monto_adicional: number, descripcion_extra?: string) {
   try {
     const { data: fiado, error: getErr } = await supabase
