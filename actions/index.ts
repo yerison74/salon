@@ -3,7 +3,7 @@
 import { supabase } from "@/lib/supabase"
 import type {
   Transaccion, GastoImprevisto, ResumenDiario, Empleada,
-  Participacion, ParticipanteForm, ComisionEmpleada
+  Participacion, ParticipanteForm, ComisionEmpleada, PagoComision
 } from "@/lib/supabase"
 import { getPorcentaje } from "@/lib/supabase"
 import { todayISO, nowTimeISO, calcularComisionesPorEmpleada } from "@/lib/utils"
@@ -244,4 +244,118 @@ async function recalcularYGuardar(fecha: string) {
   const montoInicial = resumenRes.data?.monto_inicial ?? 0
   const resumen = recalcularResumen(montoInicial, txRes.data || [], gastoRes.data || [], fecha)
   await supabase.from("resumen_diario").upsert(resumen, { onConflict: "fecha" })
+}
+
+// ─────────────────────────────────────────────
+// COMISIONES QUINCENALES
+// ─────────────────────────────────────────────
+
+/**
+ * Obtiene las comisiones acumuladas por empleada en un rango de fechas.
+ * Excluye los días que ya tienen pago registrado para esa empleada dentro del rango.
+ */
+export async function getComisionesQuincenalesAction(fechaDesde: string, fechaHasta: string) {
+  try {
+    const [partRes, empleadasRes, pagosRes, txRes] = await Promise.all([
+      supabase
+        .from("participaciones_empleadas")
+        .select("*")
+        .gte("fecha", fechaDesde)
+        .lte("fecha", fechaHasta)
+        .order("fecha", { ascending: true }),
+      supabase.from("empleadas").select("*").eq("activa", true).order("nombre"),
+      supabase
+        .from("pagos_comisiones")
+        .select("*")
+        .order("fecha_pago", { ascending: false }),
+      supabase
+        .from("transacciones")
+        .select("id, cliente, fecha")
+        .gte("fecha", fechaDesde)
+        .lte("fecha", fechaHasta),
+    ])
+
+    const participaciones: Participacion[] = partRes.data || []
+    const empleadas: Empleada[] = empleadasRes.data || []
+    const pagos: PagoComision[] = pagosRes.data || []
+    const txMap: Record<string, string> = {}
+    ;(txRes.data || []).forEach((t: any) => { txMap[t.id] = t.cliente })
+
+    // Enriquecer participaciones con nombre del cliente
+    const partsConCliente = participaciones.map(p => ({
+      ...p,
+      cliente: txMap[p.transaccion_id] || "—",
+    }))
+
+    // Para cada empleada, calcular acumulado en el rango
+    const resumen = empleadas.map(e => {
+      const parts = partsConCliente.filter(p => p.empleada_nombre === e.nombre)
+      const total = parts.reduce((s, p) => s + (p.comision ?? 0), 0)
+      const ultimoPago = pagos.find(pg => pg.empleada_nombre === e.nombre)
+      return {
+        nombre: e.nombre,
+        total,
+        participaciones: parts,
+        ultimo_pago: ultimoPago?.fecha_pago,
+        ultimo_periodo: ultimoPago ? `${ultimoPago.fecha_desde} → ${ultimoPago.fecha_hasta}` : undefined,
+      }
+    })
+
+    return { success: true, comisiones: resumen, pagos }
+  } catch (error: any) {
+    return { success: false, comisiones: [], pagos: [], error: error?.message }
+  }
+}
+
+/** Registra el pago de comisión a una empleada */
+export async function registrarPagoComisionAction(data: {
+  empleada_nombre: string
+  fecha_desde: string
+  fecha_hasta: string
+  monto_total: number
+  notas?: string
+}) {
+  try {
+    const { error } = await supabase.from("pagos_comisiones").insert({
+      ...data,
+      notas: data.notas || "",
+      fecha_pago: todayISO(),
+    })
+    if (error) throw error
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Error al registrar pago" }
+  }
+}
+
+/** Registra el pago de comisión a múltiples empleadas en lote */
+export async function registrarPagoTodosAction(pagos: {
+  empleada_nombre: string
+  fecha_desde: string
+  fecha_hasta: string
+  monto_total: number
+}[]) {
+  try {
+    const rows = pagos.map(p => ({ ...p, notas: "", fecha_pago: todayISO() }))
+    const { error } = await supabase.from("pagos_comisiones").insert(rows)
+    if (error) throw error
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Error al registrar pagos" }
+  }
+}
+
+/** Obtiene el historial completo de pagos */
+export async function getHistorialPagosAction() {
+  try {
+    const { data, error } = await supabase
+      .from("pagos_comisiones")
+      .select("*")
+      .order("fecha_pago", { ascending: false })
+      .limit(100)
+    if (error) throw error
+    return { success: true, pagos: (data || []) as PagoComision[] }
+  } catch (error: any) {
+    return { success: false, pagos: [], error: error?.message }
+  }
 }

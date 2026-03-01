@@ -100,3 +100,23 @@ export interface ComisionEmpleada {
   comision_total: number
   participaciones: Participacion[]
 }
+
+// Pago de comisión quincenal registrado
+export interface PagoComision {
+  id: string
+  empleada_nombre: string
+  fecha_desde: string
+  fecha_hasta: string
+  monto_total: number
+  fecha_pago: string
+  notas: string
+  created_at?: string
+}
+
+// Comisión quincenal acumulada por empleada (sin pagar)
+export interface ComisionQuincenal {
+  nombre: string
+  total: number
+  participaciones: (Participacion & { fecha: string })[]
+  ultimo_pago?: string // fecha del último pago
+}

@@ -8,7 +8,8 @@ import {
   UserPlus, DollarSign, Banknote, CreditCard, ArrowDownLeft,
   Users, Clock, Wallet, Trash2, MinusCircle, TrendingUp,
   Sparkles, Download, FileSpreadsheet, ChevronRight,
-  AlertCircle, CheckCircle2, Scissors, Award, ChevronDown, ChevronUp
+  AlertCircle, CheckCircle2, Scissors, Award, ChevronDown, ChevronUp,
+  Tag, Search, PlusCircle
 } from "lucide-react"
 import { cn, formatCurrency, formatTime, todayISO } from "@/lib/utils"
 import { SERVICIOS, getPorcentaje } from "@/lib/supabase"
@@ -20,9 +21,12 @@ import {
   getInitialData, addTransactionAction, deleteTransactionAction,
   addEmpleadaAction, deleteEmpleadaAction, updateInitialAmountAction,
   addExpenseAction, deleteExpenseAction, getDatesWithActivity,
+  getComisionesQuincenalesAction, registrarPagoComisionAction,
+  registrarPagoTodosAction,
 } from "@/actions"
+import type { PagoComision } from "@/lib/supabase"
 
-type Section = "dashboard" | "nueva-transaccion" | "transacciones" | "gastos" | "estadisticas" | "comisiones" | "empleadas" | "configuracion"
+type Section = "dashboard" | "nueva-transaccion" | "transacciones" | "gastos" | "estadisticas" | "comisiones" | "comisiones-quincenales" | "empleadas" | "servicios" | "configuracion"
 
 // ─── LISTA DE PRECIOS ────────────────────────────────────
 export interface PrecioServicio {
@@ -75,8 +79,10 @@ const MENU_ITEMS = [
   { id: "transacciones",     label: "Transacciones",   icon: Receipt },
   { id: "gastos",            label: "Gastos",           icon: MinusCircle },
   { id: "estadisticas",      label: "Estadísticas",    icon: BarChart3 },
-  { id: "comisiones",        label: "Comisiones",       icon: Award },
+  { id: "comisiones",             label: "Comisiones Diarias", icon: Award },
+  { id: "comisiones-quincenales", label: "Quincena",           icon: TrendingUp },
   { id: "empleadas",         label: "Empleadas",        icon: UserPlus },
+  { id: "servicios",         label: "Servicios",        icon: Tag },
   { id: "configuracion",     label: "Configuración",   icon: Settings },
 ] as const
 
@@ -101,6 +107,58 @@ export default function SalonPOS() {
   const [comisiones,    setComisiones]    = useState<ComisionEmpleada[]>([])
   const [selectedDate,  setSelectedDate]  = useState<string>(todayISO())
   const [section,       setSection]       = useState<Section>("dashboard")
+
+  // ── Quincena ──────────────────────────────────────────
+  const getDefaultQuincena = () => {
+    const hoy = new Date()
+    const dia = hoy.getDate()
+    const y = hoy.getFullYear()
+    const m = String(hoy.getMonth() + 1).padStart(2, "0")
+    if (dia <= 15) {
+      return { desde: `${y}-${m}-01`, hasta: `${y}-${m}-15` }
+    } else {
+      const ultimo = new Date(y, hoy.getMonth() + 1, 0).getDate()
+      return { desde: `${y}-${m}-16`, hasta: `${y}-${m}-${ultimo}` }
+    }
+  }
+  const defQ = getDefaultQuincena()
+  const [qDesde,         setQDesde]         = useState(defQ.desde)
+  const [qHasta,         setQHasta]         = useState(defQ.hasta)
+  const [qComisiones,    setQComisiones]    = useState<any[]>([])
+  const [qPagos,         setQPagos]         = useState<PagoComision[]>([])
+  const [qLoading,       setQLoading]       = useState(false)
+  const [qBusqueda,      setQBusqueda]      = useState("")
+  const [qCargado,       setQCargado]       = useState(false)
+  const [confirmPagoTodos, setConfirmPagoTodos] = useState(false)
+
+  const cargarQuincena = async (desde: string, hasta: string) => {
+    setQLoading(true)
+    const res = await getComisionesQuincenalesAction(desde, hasta)
+    if (res.success) { setQComisiones(res.comisiones); setQPagos(res.pagos); setQCargado(true) }
+    else showToast("Error al cargar quincena", "err")
+    setQLoading(false)
+  }
+
+  const handlePagarComision = async (nombre: string, total: number) => {
+    if (!confirm(`¿Marcar como pagada la comisión de ${nombre} (${formatCurrency(total)}) para el período ${qDesde} → ${qHasta}?`)) return
+    setSaving(true)
+    const res = await registrarPagoComisionAction({ empleada_nombre: nombre, fecha_desde: qDesde, fecha_hasta: qHasta, monto_total: total })
+    setSaving(false)
+    if (res.success) { showToast(`Pago de ${nombre} registrado ✓`); cargarQuincena(qDesde, qHasta) }
+    else showToast(res.error || "Error", "err")
+  }
+
+  const handlePagarTodas = async () => {
+    const conSaldo = qComisiones.filter(c => c.total > 0)
+    if (conSaldo.length === 0) return showToast("No hay comisiones pendientes", "err")
+    setSaving(true)
+    const res = await registrarPagoTodosAction(conSaldo.map(c => ({
+      empleada_nombre: c.nombre, fecha_desde: qDesde, fecha_hasta: qHasta, monto_total: c.total
+    })))
+    setSaving(false)
+    if (res.success) { showToast("Pagos de todas las empleadas registrados ✓"); setConfirmPagoTodos(false); cargarQuincena(qDesde, qHasta) }
+    else showToast(res.error || "Error", "err")
+  }
   const [menuOpen,      setMenuOpen]      = useState(false)
   const [loading,       setLoading]       = useState(true)
   const [saving,        setSaving]        = useState(false)
@@ -124,6 +182,10 @@ export default function SalonPOS() {
   const [tempPrecio, setTempPrecio] = useState<string>("")
   const [editandoNombre, setEditandoNombre] = useState<string|null>(null)
   const [tempNombre, setTempNombre] = useState<string>("")
+  const [busquedaServicio, setBusquedaServicio] = useState("")
+  const [nuevoServicio, setNuevoServicio] = useState({ nombre: "", precio: "", categoria: "" })
+  const [serviciosSeleccionados, setServiciosSeleccionados] = useState<PrecioServicio[]>([])
+  const [busquedaNuevaVenta, setBusquedaNuevaVenta] = useState("")
 
   const guardarPrecios = (nuevos: PrecioServicio[]) => {
     setPrecios(nuevos)
@@ -209,6 +271,8 @@ export default function SalonPOS() {
       setNewTx({ cliente: "", metodo_pago: "efectivo", monto_recibido: 0, monto_servicio: 0, cambio_entregado: 0, observaciones: "" })
       setNumParticipantes(1)
       setParticipantes([emptyParticipante()])
+      setServiciosSeleccionados([])
+      setBusquedaNuevaVenta("")
       loadData(todayISO())
       setSection("transacciones")
     } else showToast(res.error || "Error", "err")
@@ -331,6 +395,35 @@ export default function SalonPOS() {
               ))}
             </div>
 
+            {/* Ganancia Neta del Día */}
+            {(() => {
+              const gananciaNeta = resumen.total_general - totalComisiones
+              return (
+                <div className="rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 p-6 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <TrendingUp className="h-5 w-5 text-emerald-500" />
+                        <span className="text-sm font-bold text-emerald-700 uppercase tracking-wide">Ganancia Neta del Día</span>
+                      </div>
+                      <div className="text-4xl font-black text-emerald-700 mt-1">{formatCurrency(gananciaNeta)}</div>
+                      <p className="text-xs text-emerald-500 mt-2">Total ventas − Comisiones</p>
+                    </div>
+                    <div className="text-right space-y-2">
+                      <div className="rounded-xl bg-white/70 px-4 py-2 text-right">
+                        <div className="text-xs text-gray-400">Ventas brutas</div>
+                        <div className="font-bold text-gray-700">{formatCurrency(resumen.total_general)}</div>
+                      </div>
+                      <div className="rounded-xl bg-white/70 px-4 py-2 text-right">
+                        <div className="text-xs text-rose-400">− Comisiones</div>
+                        <div className="font-bold text-rose-500">−{formatCurrency(totalComisiones)}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Comisiones del día — resumen rápido */}
             {comisiones.filter(c => c.comision_total > 0).length > 0 && (
               <div className="rounded-2xl border border-rose-100 bg-rose-50 overflow-hidden">
@@ -438,29 +531,112 @@ export default function SalonPOS() {
                 </div>
               </div>
 
-              {/* Selector de servicio del menú */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Seleccionar del Menú de Servicios</label>
-                <select
-                  defaultValue=""
-                  onChange={e => {
-                    const precio = precios.find(p => p.id === e.target.value)
-                    if (precio && precio.precio !== null) {
-                      setNewTx(prev => ({ ...prev, monto_servicio: precio.precio! }))
-                    }
-                  }}
-                  className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300 bg-white">
-                  <option value="">— Elegir servicio (opcional) —</option>
-                  {categoriasPrecios.map(cat => (
-                    <optgroup key={cat} label={cat}>
-                      {precios.filter(p => p.categoria === cat).map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.nombre}{p.precio !== null ? ` — RD$${p.precio.toLocaleString()}` : " — precio variable"}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
+              {/* ── SELECTOR MÚLTIPLE DE SERVICIOS ──────────── */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">Servicios</label>
+                  {serviciosSeleccionados.length > 0 && (
+                    <button onClick={() => { setServiciosSeleccionados([]); setNewTx(prev => ({ ...prev, monto_servicio: 0 })) }}
+                      className="text-xs text-gray-400 hover:text-red-400 transition-colors">
+                      Limpiar todo
+                    </button>
+                  )}
+                </div>
+
+                {/* Chips de servicios seleccionados */}
+                {serviciosSeleccionados.length > 0 && (
+                  <div className="flex flex-wrap gap-2 p-3 rounded-xl bg-pink-50 border border-pink-100">
+                    {serviciosSeleccionados.map(s => (
+                      <div key={s.id} className="flex items-center gap-1.5 rounded-full bg-white border border-pink-200 text-pink-700 text-xs font-medium px-3 py-1.5 shadow-sm">
+                        <span>{s.nombre}</span>
+                        {s.precio !== null && <span className="text-pink-400">RD${s.precio.toLocaleString()}</span>}
+                        <button onClick={() => {
+                          const next = serviciosSeleccionados.filter(x => x.id !== s.id)
+                          setServiciosSeleccionados(next)
+                          setNewTx(prev => ({ ...prev, monto_servicio: next.reduce((sum, x) => sum + (x.precio ?? 0), 0) }))
+                        }} className="ml-0.5 text-pink-300 hover:text-red-400 transition-colors">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                    <div className="ml-auto flex items-center gap-1 text-sm font-bold text-pink-700 pl-2 border-l border-pink-200">
+                      Total: {formatCurrency(serviciosSeleccionados.reduce((s, x) => s + (x.precio ?? 0), 0))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Búsqueda */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    value={busquedaNuevaVenta}
+                    onChange={e => setBusquedaNuevaVenta(e.target.value)}
+                    placeholder="Buscar servicio…"
+                    className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300 bg-white" />
+                  {busquedaNuevaVenta && (
+                    <button onClick={() => setBusquedaNuevaVenta("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Lista de servicios agrupada */}
+                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden max-h-64 overflow-y-auto">
+                  {categoriasPrecios
+                    .map(cat => {
+                      const items = precios.filter(p =>
+                        p.categoria === cat &&
+                        (busquedaNuevaVenta === "" ||
+                          p.nombre.toLowerCase().includes(busquedaNuevaVenta.toLowerCase()) ||
+                          cat.toLowerCase().includes(busquedaNuevaVenta.toLowerCase()))
+                      )
+                      if (items.length === 0) return null
+                      return (
+                        <div key={cat}>
+                          <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{cat}</span>
+                          </div>
+                          {items.map(p => {
+                            const sel = serviciosSeleccionados.some(x => x.id === p.id)
+                            return (
+                              <button key={p.id}
+                                onClick={() => {
+                                  const next = sel
+                                    ? serviciosSeleccionados.filter(x => x.id !== p.id)
+                                    : [...serviciosSeleccionados, p]
+                                  setServiciosSeleccionados(next)
+                                  const autoTotal = next.reduce((sum, x) => sum + (x.precio ?? 0), 0)
+                                  if (autoTotal > 0) setNewTx(prev => ({ ...prev, monto_servicio: autoTotal }))
+                                }}
+                                className={cn(
+                                  "w-full flex items-center justify-between px-4 py-2.5 text-sm transition-all border-b border-gray-50 last:border-0",
+                                  sel ? "bg-pink-50 text-pink-700" : "hover:bg-gray-50 text-gray-700"
+                                )}>
+                                <div className="flex items-center gap-2">
+                                  <div className={cn("h-4 w-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all",
+                                    sel ? "border-pink-500 bg-pink-500" : "border-gray-300"
+                                  )}>
+                                    {sel && <span className="text-white text-xs leading-none">✓</span>}
+                                  </div>
+                                  <span className={cn("font-medium", sel && "font-semibold")}>{p.nombre}</span>
+                                </div>
+                                <span className={cn("font-bold", sel ? "text-pink-600" : "text-gray-500")}>
+                                  {p.precio !== null ? `RD$${p.precio.toLocaleString()}` : "Variable"}
+                                </span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )
+                    })}
+                  {precios.filter(p =>
+                    busquedaNuevaVenta === "" ||
+                    p.nombre.toLowerCase().includes(busquedaNuevaVenta.toLowerCase()) ||
+                    p.categoria.toLowerCase().includes(busquedaNuevaVenta.toLowerCase())
+                  ).length === 0 && (
+                    <div className="text-center py-6 text-gray-400 text-sm">No se encontraron servicios</div>
+                  )}
+                </div>
               </div>
 
               {/* Cliente y montos */}
@@ -815,6 +991,308 @@ export default function SalonPOS() {
           </div>
         )
 
+      // ── COMISIONES QUINCENALES ─────────────────────────
+      case "comisiones-quincenales": {
+        const qFiltradas = qBusqueda.trim()
+          ? qComisiones.filter(c => c.nombre.toLowerCase().includes(qBusqueda.toLowerCase()))
+          : qComisiones
+        const totalQuincena = qFiltradas.reduce((s: number, c: any) => s + c.total, 0)
+
+        const exportQPDF = async () => {
+          try {
+            const { jsPDF } = await import("jspdf")
+            const { default: autoTable } = await import("jspdf-autotable")
+            const doc = new jsPDF()
+            doc.setFontSize(18); doc.setFont("helvetica", "bold")
+            doc.text("Reporte de Comisiones Quincenales", 20, 20)
+            doc.setFontSize(10); doc.setFont("helvetica", "normal")
+            doc.text(`Período: ${qDesde} → ${qHasta}`, 20, 30)
+            doc.text(`Generado: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 20, 37)
+
+            autoTable(doc, {
+              startY: 48,
+              head: [["Empleada", "Participaciones", "Total Comisión", "Último Pago"]],
+              body: qFiltradas.map((c: any) => [
+                c.nombre,
+                c.participaciones.length,
+                formatCurrency(c.total),
+                c.ultimo_pago || "Sin pagos",
+              ]),
+              theme: "striped", styles: { fontSize: 10 },
+              headStyles: { fillColor: [244, 63, 94] },
+              foot: [["TOTAL", "", formatCurrency(totalQuincena), ""]],
+              footStyles: { fontStyle: "bold", fillColor: [254, 242, 242], textColor: [159, 18, 57] },
+            })
+
+            qFiltradas.forEach((c: any, idx: number) => {
+              if (c.participaciones.length === 0) return
+              const y = (doc as any).lastAutoTable.finalY + (idx === 0 ? 15 : 10)
+              if (y > 250) doc.addPage()
+              doc.setFontSize(11); doc.setFont("helvetica", "bold")
+              doc.text(`Desglose: ${c.nombre}`, 20, y > 250 ? 20 : y)
+              autoTable(doc, {
+                startY: (y > 250 ? 20 : y) + 5,
+                head: [["Fecha", "Cliente", "Servicio", "Base", "%", "Comisión"]],
+                body: c.participaciones.map((p: any) => [
+                  p.fecha,
+                  p.cliente || "—",
+                  SERVICIOS.find((s: any) => s.value === p.servicio)?.label || p.servicio,
+                  formatCurrency(p.monto_base),
+                  `${p.porcentaje}%`,
+                  formatCurrency(p.comision),
+                ]),
+                theme: "striped", styles: { fontSize: 8 },
+                headStyles: { fillColor: [107, 114, 128] },
+              })
+            })
+
+            doc.save(`comisiones-quincena-${qDesde}-${qHasta}.pdf`)
+          } catch { showToast("Error al generar PDF", "err") }
+        }
+
+        const exportQExcel = async () => {
+          try {
+            const XLSX = await import("xlsx")
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+              ["COMISIONES QUINCENALES — SALÓN DE BELLEZA"],
+              [`Período: ${qDesde} → ${qHasta}`], [],
+              ["Empleada", "Participaciones", "Total Comisión", "Último Pago"],
+              ...qFiltradas.map((c: any) => [c.nombre, c.participaciones.length, c.total, c.ultimo_pago || "Sin pagos"]),
+              [], ["TOTAL", "", totalQuincena, ""],
+            ]), "Resumen")
+
+            qFiltradas.forEach((c: any) => {
+              if (c.participaciones.length === 0) return
+              XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+                [`Comisiones de ${c.nombre} — ${qDesde} al ${qHasta}`], [],
+                ["Fecha", "Cliente", "Servicio", "Base", "% Comisión", "Comisión"],
+                ...c.participaciones.map((p: any) => [
+                  p.fecha,
+                  p.cliente || "—",
+                  SERVICIOS.find((s: any) => s.value === p.servicio)?.label || p.servicio,
+                  p.monto_base, p.porcentaje, p.comision,
+                ]),
+                [], ["TOTAL", "", "", "", "", c.total],
+              ]), c.nombre.substring(0, 31))
+            })
+
+            XLSX.writeFile(wb, `comisiones-quincena-${qDesde}-${qHasta}.xlsx`)
+          } catch { showToast("Error al generar Excel", "err") }
+        }
+
+        return (
+          <div className="max-w-4xl mx-auto space-y-5">
+            {/* Selector de período */}
+            <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-5">
+              <h3 className="font-semibold text-gray-800 flex items-center gap-2 mb-4">
+                <TrendingUp className="h-5 w-5 text-rose-400" /> Comisiones por Período
+              </h3>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Desde</label>
+                  <input type="date" value={qDesde} onChange={e => setQDesde(e.target.value)}
+                    className="rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Hasta</label>
+                  <input type="date" value={qHasta} onChange={e => setQHasta(e.target.value)}
+                    className="rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                </div>
+                <button onClick={() => cargarQuincena(qDesde, qHasta)} disabled={qLoading}
+                  className="rounded-xl bg-gradient-to-r from-rose-400 to-pink-500 text-white px-5 py-2 text-sm font-semibold shadow hover:shadow-md disabled:opacity-50 transition-all">
+                  {qLoading ? "Cargando…" : "Consultar"}
+                </button>
+                {/* Accesos rápidos */}
+                {[
+                  { label: "1–15 este mes", ...(() => { const h = new Date(); const m = String(h.getMonth()+1).padStart(2,"0"); return { d: `${h.getFullYear()}-${m}-01`, h2: `${h.getFullYear()}-${m}-15` } })() },
+                  { label: "16–fin este mes", ...(() => { const h = new Date(); const m = String(h.getMonth()+1).padStart(2,"0"); const ult = new Date(h.getFullYear(), h.getMonth()+1, 0).getDate(); return { d: `${h.getFullYear()}-${m}-16`, h2: `${h.getFullYear()}-${m}-${ult}` } })() },
+                ].map(({ label, d, h2 }) => (
+                  <button key={label} onClick={() => { setQDesde(d); setQHasta(h2); cargarQuincena(d, h2) }}
+                    className="rounded-xl border border-pink-200 text-pink-600 bg-pink-50 px-4 py-2 text-xs font-medium hover:bg-pink-100 transition-colors">
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {qCargado && (
+              <>
+                {/* Hero total + búsqueda + acciones */}
+                <div className="rounded-2xl bg-gradient-to-br from-rose-400 to-pink-600 p-6 text-white shadow-xl">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="text-pink-100 text-xs font-medium uppercase tracking-widest mb-1">Total quincena {qDesde} → {qHasta}</div>
+                      <div className="text-4xl font-black">{formatCurrency(totalQuincena)}</div>
+                      <p className="text-pink-100 text-sm mt-1">{qFiltradas.filter((c: any) => c.total > 0).length} empleadas con comisión pendiente</p>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <button onClick={exportQPDF}
+                        className="flex items-center gap-2 rounded-xl bg-white/20 hover:bg-white/30 text-white px-4 py-2 text-xs font-medium transition-all">
+                        <Download className="h-3.5 w-3.5" /> PDF
+                      </button>
+                      <button onClick={exportQExcel}
+                        className="flex items-center gap-2 rounded-xl bg-white/20 hover:bg-white/30 text-white px-4 py-2 text-xs font-medium transition-all">
+                        <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Barra de búsqueda + pagar todas */}
+                <div className="flex gap-3">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input value={qBusqueda} onChange={e => setQBusqueda(e.target.value)}
+                      placeholder="Buscar empleada…"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300 bg-white" />
+                    {qBusqueda && (
+                      <button onClick={() => setQBusqueda("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  {!confirmPagoTodos ? (
+                    <button onClick={() => setConfirmPagoTodos(true)} disabled={saving || totalQuincena === 0}
+                      className="rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2 text-sm font-semibold disabled:opacity-40 transition-all flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4" /> Pagar a todas
+                    </button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button onClick={handlePagarTodas} disabled={saving}
+                        className="rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50 transition-all">
+                        {saving ? "Guardando…" : "✓ Confirmar"}
+                      </button>
+                      <button onClick={() => setConfirmPagoTodos(false)}
+                        className="rounded-xl border border-gray-200 text-gray-600 px-4 py-2 text-sm hover:bg-gray-50 transition-all">
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tarjetas por empleada */}
+                <div className="space-y-4">
+                  {qFiltradas.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <Users className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                      <p className="text-sm">No se encontró "{qBusqueda}"</p>
+                    </div>
+                  ) : qFiltradas.map((c: any) => (
+                    <div key={c.nombre} className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+                      {/* Header empleada */}
+                      <div className={cn("flex items-center justify-between p-5 border-b",
+                        c.total > 0 ? "border-rose-100 bg-rose-50" : "border-gray-50 bg-gray-50"
+                      )}>
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-rose-300 to-pink-400 flex items-center justify-center flex-shrink-0">
+                            <span className="text-white font-bold text-sm">{c.nombre.charAt(0).toUpperCase()}</span>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-gray-800">{c.nombre}</div>
+                            <div className="text-xs text-gray-400">
+                              {c.participaciones.length} participación{c.participaciones.length !== 1 ? "es" : ""} en el período
+                              {c.ultimo_pago && <span className="ml-2 text-emerald-500">· Último pago: {c.ultimo_pago}</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <div className={cn("text-2xl font-black", c.total > 0 ? "text-rose-500" : "text-gray-300")}>
+                              {formatCurrency(c.total)}
+                            </div>
+                            <div className="text-xs text-gray-400">comisión acumulada</div>
+                          </div>
+                          {c.total > 0 && (
+                            <button onClick={() => handlePagarComision(c.nombre, c.total)} disabled={saving}
+                              className="rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50 transition-all flex items-center gap-1.5">
+                              <CheckCircle2 className="h-4 w-4" /> Pagado
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Desglose por día */}
+                      {c.participaciones.length > 0 && (() => {
+                        const porFecha: Record<string, any[]> = {}
+                        c.participaciones.forEach((p: any) => {
+                          if (!porFecha[p.fecha]) porFecha[p.fecha] = []
+                          porFecha[p.fecha].push(p)
+                        })
+                        return (
+                          <div className="divide-y divide-gray-50">
+                            {Object.entries(porFecha).map(([fecha, parts]) => {
+                              const subtotal = (parts as any[]).reduce((s: number, p: any) => s + p.comision, 0)
+                              return (
+                                <div key={fecha} className="px-5 py-3">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                                      {isValid(parseISO(fecha)) ? format(parseISO(fecha), "EEEE d 'de' MMMM", { locale: es }) : fecha}
+                                    </span>
+                                    <span className="text-xs font-semibold text-rose-500">{formatCurrency(subtotal)}</span>
+                                  </div>
+                                  {(parts as any[]).map((p: any, i: number) => (
+                                    <div key={i} className="flex items-center justify-between text-sm py-1 pl-3 border-l-2 border-rose-100">
+                                      <div>
+                                        <span className="text-gray-600">{SERVICIOS.find((s: any) => s.value === p.servicio)?.label || p.servicio}</span>
+                                        {p.cliente && p.cliente !== "—" && (
+                                          <span className="ml-2 text-xs text-gray-400 font-medium">· {p.cliente}</span>
+                                        )}
+                                      </div>
+                                      <div className="text-right">
+                                        <span className="text-xs text-gray-400 mr-2">base {formatCurrency(p.monto_base)} × {p.porcentaje}%</span>
+                                        <span className="font-semibold text-rose-600">{formatCurrency(p.comision)}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )
+                      })()}
+                      {c.participaciones.length === 0 && (
+                        <div className="px-5 py-4 text-sm text-gray-400">Sin participaciones en este período</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Historial de pagos del período */}
+                {qPagos.filter(p => p.fecha_desde >= qDesde && p.fecha_hasta <= qHasta).length > 0 && (
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-emerald-100">
+                      <h3 className="font-semibold text-emerald-800 flex items-center gap-2 text-sm">
+                        <CheckCircle2 className="h-4 w-4" /> Pagos registrados en este período
+                      </h3>
+                    </div>
+                    <div className="divide-y divide-emerald-100">
+                      {qPagos.filter(p => p.fecha_desde >= qDesde && p.fecha_hasta <= qHasta).map(p => (
+                        <div key={p.id} className="flex items-center justify-between px-6 py-3">
+                          <div>
+                            <div className="font-medium text-gray-800 text-sm">{p.empleada_nombre}</div>
+                            <div className="text-xs text-gray-400">Pagado el {p.fecha_pago}</div>
+                          </div>
+                          <span className="font-bold text-emerald-600">{formatCurrency(p.monto_total)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {!qCargado && (
+              <div className="text-center py-16 text-gray-400">
+                <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                <p className="text-sm font-medium">Selecciona un período y presiona Consultar</p>
+                <p className="text-xs mt-1">Puedes usar los accesos rápidos de arriba</p>
+              </div>
+            )}
+          </div>
+        )
+      }
+
       // ── ESTADÍSTICAS ──────────────────────────────────
       case "estadisticas":
         const maxClientes = Math.max(...comisiones.map(c => c.clientes), 1)
@@ -1001,100 +1479,198 @@ export default function SalonPOS() {
               </div>
             </div>
 
-            {/* ── MENÚ DE PRECIOS ─────────────────────────────── */}
-            <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden mt-6">
-              <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
-                <h3 className="font-semibold text-gray-800">Menú de Precios</h3>
-                <span className="text-xs text-gray-400">Haz clic en el nombre o precio para editar</span>
-              </div>
-              <div className="divide-y divide-gray-50">
-                {categoriasPrecios.map(cat => (
-                  <div key={cat}>
-                    <div className="px-6 py-2 bg-gradient-to-r from-rose-50 to-pink-50">
-                      <span className="text-xs font-bold text-pink-600 uppercase tracking-wider">{cat}</span>
-                    </div>
-                    {precios.filter(p => p.categoria === cat).map(p => (
-                      <div key={p.id} className="flex items-center justify-between px-6 py-3 hover:bg-gray-50 transition-colors">
-                        {/* Nombre editable */}
-                        <div className="flex-1 mr-4">
-                          {editandoNombre === p.id ? (
-                            <div className="flex items-center gap-2">
-                              <input
-                                value={tempNombre}
-                                onChange={e => setTempNombre(e.target.value)}
-                                onKeyDown={e => {
-                                  if (e.key === "Enter") {
-                                    guardarPrecios(precios.map(x => x.id === p.id ? { ...x, nombre: tempNombre } : x))
-                                    setEditandoNombre(null)
-                                  }
-                                  if (e.key === "Escape") setEditandoNombre(null)
-                                }}
-                                autoFocus
-                                className="flex-1 rounded-lg border border-pink-300 px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" />
-                              <button onClick={() => {
-                                guardarPrecios(precios.map(x => x.id === p.id ? { ...x, nombre: tempNombre } : x))
-                                setEditandoNombre(null)
-                              }} className="text-xs text-pink-500 font-medium">✓</button>
-                              <button onClick={() => setEditandoNombre(null)} className="text-xs text-gray-400">✕</button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => { setEditandoNombre(p.id); setTempNombre(p.nombre) }}
-                              className="text-sm text-gray-700 hover:text-pink-600 transition-colors text-left w-full">
-                              {p.nombre}
-                            </button>
-                          )}
-                        </div>
-                        {/* Precio editable */}
-                        <div className="flex-shrink-0">
-                          {editandoPrecio === p.id ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-gray-400">RD$</span>
-                              <input
-                                type="number"
-                                min="0"
-                                value={tempPrecio}
-                                onChange={e => setTempPrecio(e.target.value)}
-                                onKeyDown={e => {
-                                  if (e.key === "Enter") {
-                                    guardarPrecios(precios.map(x => x.id === p.id ? { ...x, precio: parseFloat(tempPrecio) || null } : x))
-                                    setEditandoPrecio(null)
-                                  }
-                                  if (e.key === "Escape") setEditandoPrecio(null)
-                                }}
-                                autoFocus
-                                className="w-24 rounded-lg border border-pink-300 px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-pink-300" />
-                              <button onClick={() => {
-                                guardarPrecios(precios.map(x => x.id === p.id ? { ...x, precio: parseFloat(tempPrecio) || null } : x))
-                                setEditandoPrecio(null)
-                              }} className="text-xs text-pink-500 font-medium">✓</button>
-                              <button onClick={() => setEditandoPrecio(null)} className="text-xs text-gray-400">✕</button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => { setEditandoPrecio(p.id); setTempPrecio(p.precio?.toString() ?? "") }}
-                              className="font-bold text-sm text-gray-800 hover:text-pink-600 transition-colors rounded-lg bg-gray-50 hover:bg-pink-50 px-3 py-1 border border-transparent hover:border-pink-200">
-                              {p.precio !== null ? `RD$${p.precio.toLocaleString()}` : "Variable"}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-              <div className="px-6 py-4 border-t border-gray-50">
-                <button
-                  onClick={() => guardarPrecios(PRECIOS_INICIALES)}
-                  className="text-xs text-gray-400 hover:text-red-400 transition-colors">
-                  Restablecer precios originales
-                </button>
-              </div>
-            </div>
+            {/* ── MENÚ DE PRECIOS eliminado — ahora en sección Servicios ── */}
           </div>
         )
-    }
-  }
+
+      // ── SERVICIOS ──────────────────────────────────────
+      case "servicios": {
+        const preciosFiltrados = busquedaServicio.trim()
+          ? precios.filter(p =>
+              p.nombre.toLowerCase().includes(busquedaServicio.toLowerCase()) ||
+              p.categoria.toLowerCase().includes(busquedaServicio.toLowerCase())
+            )
+          : precios
+        const categoriasFiltradas = Array.from(new Set(preciosFiltrados.map(p => p.categoria)))
+
+        return (
+          <div className="max-w-3xl mx-auto space-y-5">
+            {/* Header con buscador y botón agregar */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  value={busquedaServicio}
+                  onChange={e => setBusquedaServicio(e.target.value)}
+                  placeholder="Buscar por nombre o categoría…"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300 bg-white" />
+                {busquedaServicio && (
+                  <button onClick={() => setBusquedaServicio("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Formulario nuevo servicio */}
+            <div className="rounded-2xl border border-pink-100 bg-gradient-to-br from-rose-50 to-pink-50 p-5 space-y-4">
+              <h3 className="font-semibold text-gray-800 flex items-center gap-2 text-sm">
+                <PlusCircle className="h-4 w-4 text-pink-500" /> Agregar nuevo servicio
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Nombre *</label>
+                  <input
+                    value={nuevoServicio.nombre}
+                    onChange={e => setNuevoServicio({ ...nuevoServicio, nombre: e.target.value })}
+                    placeholder="Ej: Tinte completo"
+                    className="w-full rounded-xl border border-white bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Categoría *</label>
+                  <div className="relative">
+                    <input
+                      value={nuevoServicio.categoria}
+                      onChange={e => setNuevoServicio({ ...nuevoServicio, categoria: e.target.value })}
+                      placeholder="Ej: Tratamientos"
+                      list="categorias-list"
+                      className="w-full rounded-xl border border-white bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                    <datalist id="categorias-list">
+                      {categoriasPrecios.map(c => <option key={c} value={c} />)}
+                    </datalist>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Precio (RD$)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={nuevoServicio.precio}
+                    onChange={e => setNuevoServicio({ ...nuevoServicio, precio: e.target.value })}
+                    placeholder="0 = variable"
+                    className="w-full rounded-xl border border-white bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (!nuevoServicio.nombre.trim() || !nuevoServicio.categoria.trim())
+                    return showToast("Nombre y categoría son requeridos", "err")
+                  const nuevo: PrecioServicio = {
+                    id: `custom_${Date.now()}`,
+                    nombre: nuevoServicio.nombre.trim(),
+                    precio: nuevoServicio.precio ? parseFloat(nuevoServicio.precio) : null,
+                    categoria: nuevoServicio.categoria.trim(),
+                  }
+                  guardarPrecios([...precios, nuevo])
+                  setNuevoServicio({ nombre: "", precio: "", categoria: "" })
+                  showToast("Servicio agregado ✓")
+                }}
+                className="rounded-xl bg-gradient-to-r from-rose-400 to-pink-500 text-white px-5 py-2 text-sm font-semibold shadow hover:shadow-md transition-all">
+                Agregar Servicio
+              </button>
+            </div>
+
+            {/* Lista de servicios */}
+            {preciosFiltrados.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <Search className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                <p className="text-sm">No se encontraron servicios para "{busquedaServicio}"</p>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+                <div className="px-6 py-3 border-b border-gray-50 flex items-center justify-between">
+                  <span className="text-xs text-gray-400 font-medium">
+                    {preciosFiltrados.length} servicio{preciosFiltrados.length !== 1 ? "s" : ""}
+                    {busquedaServicio ? ` encontrado${preciosFiltrados.length !== 1 ? "s" : ""}` : " en total"}
+                  </span>
+                  <button
+                    onClick={() => guardarPrecios(PRECIOS_INICIALES)}
+                    className="text-xs text-gray-400 hover:text-red-400 transition-colors">
+                    Restablecer originales
+                  </button>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {categoriasFiltradas.map(cat => (
+                    <div key={cat}>
+                      <div className="px-6 py-2 bg-gradient-to-r from-rose-50 to-pink-50 flex items-center gap-2">
+                        <Tag className="h-3 w-3 text-pink-400" />
+                        <span className="text-xs font-bold text-pink-600 uppercase tracking-wider">{cat}</span>
+                        <span className="text-xs text-pink-400">({preciosFiltrados.filter(p => p.categoria === cat).length})</span>
+                      </div>
+                      {preciosFiltrados.filter(p => p.categoria === cat).map(p => (
+                        <div key={p.id} className="flex items-center justify-between px-6 py-3 hover:bg-gray-50 transition-colors group">
+                          {/* Nombre editable */}
+                          <div className="flex-1 mr-4">
+                            {editandoNombre === p.id ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  value={tempNombre}
+                                  onChange={e => setTempNombre(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") { guardarPrecios(precios.map(x => x.id === p.id ? { ...x, nombre: tempNombre } : x)); setEditandoNombre(null) }
+                                    if (e.key === "Escape") setEditandoNombre(null)
+                                  }}
+                                  autoFocus
+                                  className="flex-1 rounded-lg border border-pink-300 px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                                <button onClick={() => { guardarPrecios(precios.map(x => x.id === p.id ? { ...x, nombre: tempNombre } : x)); setEditandoNombre(null) }} className="text-xs text-pink-500 font-medium">✓</button>
+                                <button onClick={() => setEditandoNombre(null)} className="text-xs text-gray-400">✕</button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => { setEditandoNombre(p.id); setTempNombre(p.nombre) }}
+                                className="text-sm text-gray-700 hover:text-pink-600 transition-colors text-left w-full">
+                                {p.nombre}
+                                <span className="ml-2 text-xs text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity">editar</span>
+                              </button>
+                            )}
+                          </div>
+                          {/* Precio editable + eliminar */}
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {editandoPrecio === p.id ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-400">RD$</span>
+                                <input
+                                  type="number" min="0"
+                                  value={tempPrecio}
+                                  onChange={e => setTempPrecio(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") { guardarPrecios(precios.map(x => x.id === p.id ? { ...x, precio: parseFloat(tempPrecio) || null } : x)); setEditandoPrecio(null) }
+                                    if (e.key === "Escape") setEditandoPrecio(null)
+                                  }}
+                                  autoFocus
+                                  className="w-24 rounded-lg border border-pink-300 px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                                <button onClick={() => { guardarPrecios(precios.map(x => x.id === p.id ? { ...x, precio: parseFloat(tempPrecio) || null } : x)); setEditandoPrecio(null) }} className="text-xs text-pink-500 font-medium">✓</button>
+                                <button onClick={() => setEditandoPrecio(null)} className="text-xs text-gray-400">✕</button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => { setEditandoPrecio(p.id); setTempPrecio(p.precio?.toString() ?? "") }}
+                                className="font-bold text-sm text-gray-800 hover:text-pink-600 transition-colors rounded-lg bg-gray-50 hover:bg-pink-50 px-3 py-1 border border-transparent hover:border-pink-200">
+                                {p.precio !== null ? `RD$${p.precio.toLocaleString()}` : "Variable"}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => {
+                                if (confirm(`¿Eliminar "${p.nombre}"?`))
+                                  guardarPrecios(precios.filter(x => x.id !== p.id))
+                              }}
+                              className="text-gray-200 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 p-1">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      }
+
+    } // end switch
+  } // end renderContent
 
   // ─── EXPORTS ──────────────────────────────────────────────
   const exportPDF = async () => {
@@ -1120,11 +1696,20 @@ export default function SalonPOS() {
           ["Total Cambios", formatCurrency(resumen.total_devuelto)],
           ["Gastos Imprevistos", formatCurrency(resumen.total_gastos_imprevistos)],
           ["Total en Caja", formatCurrency(resumen.saldo_final)],
-          ["TOTAL GENERAL", formatCurrency(resumen.total_general)],
+          ["TOTAL GENERAL (Ventas)", formatCurrency(resumen.total_general)],
           ["Total Comisiones", formatCurrency(totalCom)],
+          ["GANANCIA NETA DEL DÍA", formatCurrency(resumen.total_general - totalCom)],
         ],
         theme: "striped", styles: { fontSize: 10 },
         headStyles: { fillColor: [236,72,153] },
+        bodyStyles: { },
+        didParseCell: (data: any) => {
+          if (data.row.index === 8) {
+            data.cell.styles.fontStyle = "bold"
+            data.cell.styles.fillColor = [209, 250, 229]
+            data.cell.styles.textColor = [6, 95, 70]
+          }
+        },
       })
 
       if (transactions.length > 0) {
@@ -1181,8 +1766,9 @@ export default function SalonPOS() {
         ["Cambios", resumen.total_devuelto],
         ["Gastos Imprevistos", resumen.total_gastos_imprevistos],
         ["Total Caja", resumen.saldo_final],
-        ["TOTAL GENERAL", resumen.total_general],
+        ["TOTAL GENERAL (Ventas)", resumen.total_general],
         ["Total Comisiones", totalCom],
+        ["GANANCIA NETA DEL DÍA", resumen.total_general - totalCom],
       ]), "Resumen")
 
       if (transactions.length > 0) {
