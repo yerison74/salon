@@ -54,6 +54,7 @@ export interface Transaccion {
   hora: string
   cliente: string
   metodo_pago: 'efectivo' | 'tarjeta' | 'transferencia'
+  banco_transferencia?: string | null
   monto_recibido: number
   monto_servicio: number
   cambio_entregado: number

@@ -200,6 +200,7 @@ export default function SalonPOS() {
   const [newTx, setNewTx] = useState({
     cliente: "", metodo_pago: "efectivo" as Transaccion["metodo_pago"],
     monto_recibido: 0, monto_servicio: 0, cambio_entregado: 0, observaciones: "",
+    banco_transferencia: "",
   })
   const [numParticipantes, setNumParticipantes] = useState(1)
   const [participantes, setParticipantes] = useState<ParticipanteForm[]>([emptyParticipante()])
@@ -268,7 +269,7 @@ export default function SalonPOS() {
     setSaving(false)
     if (res.success) {
       showToast("Venta registrada ✓")
-      setNewTx({ cliente: "", metodo_pago: "efectivo", monto_recibido: 0, monto_servicio: 0, cambio_entregado: 0, observaciones: "" })
+      setNewTx({ cliente: "", metodo_pago: "efectivo", monto_recibido: 0, monto_servicio: 0, cambio_entregado: 0, observaciones: "", banco_transferencia: "" })
       setNumParticipantes(1)
       setParticipantes([emptyParticipante()])
       setServiciosSeleccionados([])
@@ -477,7 +478,9 @@ export default function SalonPOS() {
                       </div>
                       <div className="text-right">
                         <div className="font-semibold text-gray-800 text-sm">{formatCurrency(t.monto_servicio)}</div>
-                        <div className={cn("text-xs rounded-full px-2 py-0.5 inline-block", c.bg, c.text)}>{t.metodo_pago}</div>
+                        <div className={cn("text-xs rounded-full px-2 py-0.5 inline-block", c.bg, c.text)}>
+                          {t.metodo_pago}{t.banco_transferencia ? ` · ${t.banco_transferencia}` : ""}
+                        </div>
                       </div>
                     </div>
                   )
@@ -681,6 +684,28 @@ export default function SalonPOS() {
                 </div>
               )}
 
+              {newTx.metodo_pago === "transferencia" && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Banco de destino *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {["Banco Popular", "Asociación Popular", "Banco de Reservas", "Banco BHD"].map(banco => (
+                      <button key={banco} onClick={() => setNewTx({ ...newTx, banco_transferencia: banco })}
+                        className={cn(
+                          "rounded-xl border-2 py-2.5 px-3 text-sm font-medium transition-all text-left",
+                          newTx.banco_transferencia === banco
+                            ? "border-violet-400 bg-violet-50 text-violet-700"
+                            : "border-gray-100 text-gray-500 hover:border-violet-200 hover:text-violet-600"
+                        )}>
+                        {banco}
+                      </button>
+                    ))}
+                  </div>
+                  {!newTx.banco_transferencia && (
+                    <p className="text-xs text-amber-500 mt-1.5">Selecciona el banco de destino</p>
+                  )}
+                </div>
+              )}
+
               {/* ── SECCIÓN EMPLEADAS ─────────────────────── */}
               <div className="border border-gray-100 rounded-2xl p-4 space-y-4 bg-gray-50">
                 <div className="flex items-center justify-between">
@@ -797,7 +822,9 @@ export default function SalonPOS() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-gray-800 text-sm truncate">{t.cliente}</span>
-                          <span className={cn("text-xs rounded-full px-2 py-0.5 flex-shrink-0", c.bg, c.text)}>{t.metodo_pago}</span>
+                          <span className={cn("text-xs rounded-full px-2 py-0.5 flex-shrink-0", c.bg, c.text)}>
+                            {t.metodo_pago}{t.banco_transferencia ? ` · ${t.banco_transferencia}` : ""}
+                          </span>
                         </div>
                         <div className="text-xs text-gray-400 truncate">{nombres} · {formatTime(t.hora)}</div>
                       </div>
@@ -824,6 +851,12 @@ export default function SalonPOS() {
                         <div className="pt-3 space-y-2">
                           {t.observaciones && (
                             <p className="text-xs text-gray-500 italic">"{t.observaciones}"</p>
+                          )}
+                          {t.banco_transferencia && (
+                            <div className="flex items-center gap-2 rounded-lg bg-violet-50 border border-violet-100 px-3 py-2">
+                              <span className="text-xs font-semibold text-violet-500 uppercase tracking-wide">Banco:</span>
+                              <span className="text-sm font-medium text-violet-700">{t.banco_transferencia}</span>
+                            </div>
                           )}
                           {(t.participaciones || []).length > 0 && (
                             <div>
@@ -1715,9 +1748,10 @@ export default function SalonPOS() {
       if (transactions.length > 0) {
         autoTable(doc, {
           startY: (doc as any).lastAutoTable.finalY + 15,
-          head: [["Cliente","Hora","Método","Servicio","Recibido","Cambio","Empleada(s)"]],
+          head: [["Cliente","Hora","Método","Banco","Servicio","Recibido","Cambio","Empleada(s)"]],
           body: transactions.map(t => [
             t.cliente, formatTime(t.hora), t.metodo_pago,
+            t.banco_transferencia || "—",
             formatCurrency(t.monto_servicio), formatCurrency(t.monto_recibido),
             formatCurrency(t.cambio_entregado),
             (t.participaciones||[]).map(p => p.empleada_nombre).join(", ")
@@ -1773,9 +1807,11 @@ export default function SalonPOS() {
 
       if (transactions.length > 0) {
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-          ["Cliente","Hora","Método","Servicio","Recibido","Cambio","Empleada(s)","Notas"],
+          ["Cliente","Hora","Método","Banco","Servicio","Recibido","Cambio","Empleada(s)","Notas"],
           ...transactions.map(t => [
-            t.cliente, t.hora, t.metodo_pago, t.monto_servicio, t.monto_recibido, t.cambio_entregado,
+            t.cliente, t.hora, t.metodo_pago,
+            t.banco_transferencia || "—",
+            t.monto_servicio, t.monto_recibido, t.cambio_entregado,
             (t.participaciones||[]).map(p => p.empleada_nombre).join(", "), t.observaciones
           ])
         ]), "Transacciones")
