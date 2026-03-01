@@ -82,7 +82,7 @@ function defaultResumen(fecha?: string): ResumenDiario {
 // ─────────────────────────────────────────────
 export async function addTransactionAction(data: {
   cliente: string
-  metodo_pago: 'efectivo' | 'tarjeta' | 'transferencia'
+  metodo_pago: 'efectivo' | 'tarjeta' | 'transferencia' | 'fiado'
   banco_transferencia?: string | null
   monto_recibido: number
   monto_servicio: number

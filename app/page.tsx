@@ -92,6 +92,7 @@ const PAYMENT_COLORS = {
   efectivo:      { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500" },
   tarjeta:       { bg: "bg-sky-50",     text: "text-sky-700",     border: "border-sky-200",     dot: "bg-sky-500"     },
   transferencia: { bg: "bg-violet-50",  text: "text-violet-700",  border: "border-violet-200",  dot: "bg-violet-500"  },
+  fiado:         { bg: "bg-amber-50",   text: "text-amber-700",   border: "border-amber-200",   dot: "bg-amber-500"   },
 }
 
 // ─── Formulario vacío de participante ────────────────────
@@ -419,19 +420,32 @@ export default function SalonPOS() {
       ...newTx,
       banco_transferencia: newTx.metodo_pago === "transferencia" ? bancoSeleccionado : "",
       monto_recibido: newTx.metodo_pago === "tarjeta" ? montoACobrar :
-                      newTx.metodo_pago === "transferencia" ? newTx.monto_servicio : newTx.monto_recibido,
+                      newTx.metodo_pago === "transferencia" ? newTx.monto_servicio :
+                      newTx.metodo_pago === "fiado" ? 0 : newTx.monto_recibido,
       cambio_entregado: cambioCalc,
       participantes: participantes.filter(p => p.empleada_nombre.trim() !== ""),
     })
+
+    // Si es fiado, también registrarlo en la tabla de fiados
+    if (res.success && newTx.metodo_pago === "fiado") {
+      await addFiadoAction({
+        cliente_nombre: newTx.cliente.trim(),
+        descripcion: newTx.observaciones.trim() || (serviciosSeleccionados.map(s => s.nombre).join(", ")) || "Servicio",
+        monto_total: newTx.monto_servicio,
+        notas: "",
+      })
+    }
+
     setSaving(false)
     if (res.success) {
-      showToast("Venta registrada ✓")
+      showToast(newTx.metodo_pago === "fiado" ? "Venta registrada y fiado creado ✓" : "Venta registrada ✓")
       setNewTx({ cliente: "", metodo_pago: "efectivo", monto_recibido: 0, monto_servicio: 0, cambio_entregado: 0, observaciones: "" })
       setBancoSeleccionado("")
       setNumParticipantes(1)
       setParticipantes([emptyParticipante()])
       setServiciosSeleccionados([])
       setBusquedaNuevaVenta("")
+      setFiadosLoaded(false) // forzar recarga de fiados
       loadData(todayISO())
       setSection("transacciones")
     } else showToast(res.error || "Error", "err")
@@ -488,6 +502,7 @@ export default function SalonPOS() {
     efectivo:      transactions.filter(t => t.metodo_pago === "efectivo").length,
     tarjeta:       transactions.filter(t => t.metodo_pago === "tarjeta").length,
     transferencia: transactions.filter(t => t.metodo_pago === "transferencia").length,
+    fiado:         transactions.filter(t => t.metodo_pago === "fiado").length,
   }
 
   // ─────────────────────────────────────────────────────
@@ -676,10 +691,10 @@ export default function SalonPOS() {
               {/* Método de pago */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Método de Pago</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(["efectivo","tarjeta","transferencia"] as const).map(m => {
+                <div className="grid grid-cols-4 gap-2">
+                  {(["efectivo","tarjeta","transferencia","fiado"] as const).map(m => {
                     const c = PAYMENT_COLORS[m]
-                    const labels = { efectivo: "💵 Efectivo", tarjeta: "💳 Tarjeta", transferencia: "📱 Transfer." }
+                    const labels = { efectivo: "💵 Efectivo", tarjeta: "💳 Tarjeta", transferencia: "📱 Transfer.", fiado: "📋 Fiado" }
                     return (
                       <button key={m} onClick={() => { setNewTx({ ...newTx, metodo_pago: m }); setBancoSeleccionado("") }}
                         className={cn("rounded-xl border-2 py-3 text-sm font-medium transition-all",
@@ -851,6 +866,17 @@ export default function SalonPOS() {
                 <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 flex items-center justify-between">
                   <span className="text-sm text-sky-700">Total a cobrar (+5% tarjeta)</span>
                   <span className="font-bold text-sky-700">{formatCurrency(montoACobrar)}</span>
+                </div>
+              )}
+
+              {newTx.metodo_pago === "fiado" && (
+                <div className="rounded-xl border-2 border-amber-200 bg-amber-50 px-4 py-4 space-y-1">
+                  <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <Wallet className="h-4 w-4" /> Esta venta se registrará como fiado
+                  </div>
+                  <p className="text-xs text-amber-600">
+                    Se creará automáticamente una deuda de <strong>{formatCurrency(newTx.monto_servicio || 0)}</strong> a nombre de <strong>{newTx.cliente || "el cliente"}</strong>. Podrás registrar abonos desde la sección Fiados.
+                  </p>
                 </div>
               )}
 
@@ -1538,7 +1564,7 @@ export default function SalonPOS() {
             <div className="grid grid-cols-3 gap-4">
               {Object.entries(ventasPorMetodo).map(([m, count]) => {
                 const c = PAYMENT_COLORS[m as keyof typeof PAYMENT_COLORS]
-                const labels = { efectivo: "💵 Efectivo", tarjeta: "💳 Tarjeta", transferencia: "📱 Transfer." }
+                const labels = { efectivo: "💵 Efectivo", tarjeta: "💳 Tarjeta", transferencia: "📱 Transfer.", fiado: "📋 Fiado" }
                 const pct = transactions.length > 0 ? Math.round(count / transactions.length * 100) : 0
                 return (
                   <div key={m} className={cn("rounded-2xl border p-5", c.border, c.bg)}>

@@ -5,6 +5,8 @@
 -- ============================================================
 -- MIGRACIÓN (si la BD ya existe, ejecutar esto primero):
 -- ALTER TABLE public.transacciones ADD COLUMN IF NOT EXISTS banco_transferencia text;
+-- ALTER TABLE public.transacciones DROP CONSTRAINT IF EXISTS transacciones_metodo_pago_check;
+-- ALTER TABLE public.transacciones ADD CONSTRAINT transacciones_metodo_pago_check CHECK (metodo_pago IN ('efectivo','tarjeta','transferencia','fiado'));
 -- ============================================================
 
 create extension if not exists "uuid-ossp";
@@ -60,7 +62,7 @@ create table if not exists public.transacciones (
   fecha            date not null default current_date,
   hora             time not null default current_time,
   cliente          text not null,
-  metodo_pago      text not null check (metodo_pago in ('efectivo','tarjeta','transferencia')),
+  metodo_pago      text not null check (metodo_pago in ('efectivo','tarjeta','transferencia','fiado')),
   banco_transferencia text,
   monto_recibido   numeric(12,2) not null default 0,
   monto_servicio   numeric(12,2) not null default 0,
@@ -185,6 +187,45 @@ drop policy if exists "Allow all on pagos_comisiones" on public.pagos_comisiones
 create policy "Allow all on pagos_comisiones" on public.pagos_comisiones for all using (true) with check (true);
 create index if not exists pagos_com_empleada_idx on public.pagos_comisiones(empleada_nombre);
 create index if not exists pagos_com_fecha_idx on public.pagos_comisiones(fecha_pago);
+
+-- ============================================================
+-- TABLA: fiados
+-- Registra deudas de clientes (crédito/fiado)
+-- ============================================================
+create table if not exists public.fiados (
+  id               uuid primary key default uuid_generate_v4(),
+  cliente_nombre   text not null,
+  descripcion      text not null default '',
+  monto_total      numeric(12,2) not null,
+  monto_pagado     numeric(12,2) not null default 0,
+  fecha            date not null default current_date,
+  saldado          boolean not null default false,
+  fecha_saldado    date,
+  notas            text not null default '',
+  created_at       timestamptz not null default now()
+);
+alter table public.fiados enable row level security;
+drop policy if exists "Allow all on fiados" on public.fiados;
+create policy "Allow all on fiados" on public.fiados for all using (true) with check (true);
+create index if not exists fiados_cliente_idx on public.fiados(cliente_nombre);
+create index if not exists fiados_saldado_idx on public.fiados(saldado);
+
+-- ============================================================
+-- TABLA: abonos_fiados
+-- Registra cada abono parcial a un fiado
+-- ============================================================
+create table if not exists public.abonos_fiados (
+  id        uuid primary key default uuid_generate_v4(),
+  fiado_id  uuid not null references public.fiados(id) on delete cascade,
+  monto     numeric(12,2) not null,
+  fecha     date not null default current_date,
+  notas     text not null default '',
+  created_at timestamptz not null default now()
+);
+alter table public.abonos_fiados enable row level security;
+drop policy if exists "Allow all on abonos_fiados" on public.abonos_fiados;
+create policy "Allow all on abonos_fiados" on public.abonos_fiados for all using (true) with check (true);
+create index if not exists abonos_fiado_idx on public.abonos_fiados(fiado_id);
 
 -- Variables de entorno en .env.local:
 -- NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co

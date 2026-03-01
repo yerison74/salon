@@ -53,7 +53,7 @@ export interface Transaccion {
   fecha: string
   hora: string
   cliente: string
-  metodo_pago: 'efectivo' | 'tarjeta' | 'transferencia'
+  metodo_pago: 'efectivo' | 'tarjeta' | 'transferencia' | 'fiado'
   banco_transferencia?: string | null
   monto_recibido: number
   monto_servicio: number
