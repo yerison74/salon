@@ -83,6 +83,7 @@ function defaultResumen(fecha?: string): ResumenDiario {
 export async function addTransactionAction(data: {
   cliente: string
   metodo_pago: 'efectivo' | 'tarjeta' | 'transferencia'
+  banco_transferencia?: string | null
   monto_recibido: number
   monto_servicio: number
   cambio_entregado: number
@@ -93,6 +94,11 @@ export async function addTransactionAction(data: {
     const today = todayISO()
     const now = nowTimeISO()
     const { participantes, ...txData } = data
+
+    // Validar banco obligatorio para transferencias
+    if (data.metodo_pago === 'transferencia' && !data.banco_transferencia?.trim()) {
+      return { success: false, error: "El banco de destino es obligatorio para transferencias" }
+    }
 
     // 1. Insertar transacción (sin quien_atendio — ahora es many-to-many)
     const { data: inserted, error: txError } = await supabase

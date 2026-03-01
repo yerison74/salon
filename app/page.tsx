@@ -200,8 +200,8 @@ export default function SalonPOS() {
   const [newTx, setNewTx] = useState({
     cliente: "", metodo_pago: "efectivo" as Transaccion["metodo_pago"],
     monto_recibido: 0, monto_servicio: 0, cambio_entregado: 0, observaciones: "",
-    banco_transferencia: "",
   })
+  const [bancoSeleccionado, setBancoSeleccionado] = useState("")
   const [numParticipantes, setNumParticipantes] = useState(1)
   const [participantes, setParticipantes] = useState<ParticipanteForm[]>([emptyParticipante()])
 
@@ -257,10 +257,12 @@ export default function SalonPOS() {
   const handleAddTransaction = async () => {
     if (!newTx.cliente.trim()) return showToast("Nombre del cliente requerido", "err")
     if (newTx.monto_servicio <= 0) return showToast("Ingresa el monto del servicio", "err")
+    if (newTx.metodo_pago === "transferencia" && !bancoSeleccionado) return showToast("Selecciona el banco de destino", "err")
 
     setSaving(true)
     const res = await addTransactionAction({
       ...newTx,
+      banco_transferencia: newTx.metodo_pago === "transferencia" ? bancoSeleccionado : "",
       monto_recibido: newTx.metodo_pago === "tarjeta" ? montoACobrar :
                       newTx.metodo_pago === "transferencia" ? newTx.monto_servicio : newTx.monto_recibido,
       cambio_entregado: cambioCalc,
@@ -269,7 +271,8 @@ export default function SalonPOS() {
     setSaving(false)
     if (res.success) {
       showToast("Venta registrada ✓")
-      setNewTx({ cliente: "", metodo_pago: "efectivo", monto_recibido: 0, monto_servicio: 0, cambio_entregado: 0, observaciones: "", banco_transferencia: "" })
+      setNewTx({ cliente: "", metodo_pago: "efectivo", monto_recibido: 0, monto_servicio: 0, cambio_entregado: 0, observaciones: "" })
+      setBancoSeleccionado("")
       setNumParticipantes(1)
       setParticipantes([emptyParticipante()])
       setServiciosSeleccionados([])
@@ -523,7 +526,7 @@ export default function SalonPOS() {
                     const c = PAYMENT_COLORS[m]
                     const labels = { efectivo: "💵 Efectivo", tarjeta: "💳 Tarjeta", transferencia: "📱 Transfer." }
                     return (
-                      <button key={m} onClick={() => setNewTx({ ...newTx, metodo_pago: m })}
+                      <button key={m} onClick={() => { setNewTx({ ...newTx, metodo_pago: m }); setBancoSeleccionado("") }}
                         className={cn("rounded-xl border-2 py-3 text-sm font-medium transition-all",
                           newTx.metodo_pago === m ? `${c.border} ${c.bg} ${c.text}` : "border-gray-100 text-gray-500 hover:border-gray-200"
                         )}>
@@ -686,22 +689,36 @@ export default function SalonPOS() {
 
               {newTx.metodo_pago === "transferencia" && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Banco de destino *</label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Banco de destino <span className="text-rose-500">*</span>
+                  </label>
                   <div className="grid grid-cols-2 gap-2">
-                    {["Banco Popular", "Asociación Popular", "Banco de Reservas", "Banco BHD"].map(banco => (
-                      <button key={banco} onClick={() => setNewTx({ ...newTx, banco_transferencia: banco })}
-                        className={cn(
-                          "rounded-xl border-2 py-2.5 px-3 text-sm font-medium transition-all text-left",
-                          newTx.banco_transferencia === banco
-                            ? "border-violet-400 bg-violet-50 text-violet-700"
-                            : "border-gray-100 text-gray-500 hover:border-violet-200 hover:text-violet-600"
+                    {["Banco Popular", "Asociación Popular", "Banco de Reservas", "Banco BHD"].map(banco => {
+                      const sel = bancoSeleccionado === banco
+                      return (
+                        <label key={banco} className={cn(
+                          "flex items-center gap-3 rounded-xl border-2 py-3 px-4 cursor-pointer transition-all select-none",
+                          sel ? "border-violet-500 bg-violet-50" : "border-gray-200 bg-white hover:border-violet-300"
                         )}>
-                        {banco}
-                      </button>
-                    ))}
+                          <input
+                            type="radio"
+                            name="banco_transferencia"
+                            value={banco}
+                            checked={sel}
+                            onChange={() => setBancoSeleccionado(banco)}
+                            className="accent-violet-500 h-4 w-4 flex-shrink-0"
+                          />
+                          <span className={cn("text-sm font-medium", sel ? "text-violet-700" : "text-gray-600")}>
+                            {banco}
+                          </span>
+                        </label>
+                      )
+                    })}
                   </div>
-                  {!newTx.banco_transferencia && (
-                    <p className="text-xs text-amber-500 mt-1.5">Selecciona el banco de destino</p>
+                  {!bancoSeleccionado && (
+                    <p className="text-xs text-rose-500 mt-1.5 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" /> Selecciona el banco de destino
+                    </p>
                   )}
                 </div>
               )}
@@ -788,7 +805,16 @@ export default function SalonPOS() {
                   className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300 resize-none" />
               </div>
 
-              <button onClick={handleAddTransaction} disabled={saving}
+              {newTx.metodo_pago === "transferencia" && !bancoSeleccionado && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 flex items-center gap-2 text-rose-600 text-sm font-medium">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  Debes seleccionar el banco de destino antes de registrar la venta
+                </div>
+              )}
+
+              <button
+                onClick={handleAddTransaction}
+                disabled={saving || (newTx.metodo_pago === "transferencia" && !bancoSeleccionado)}
                 className="w-full rounded-xl bg-gradient-to-r from-rose-400 to-pink-500 text-white py-3 font-semibold text-sm shadow-lg hover:shadow-xl hover:from-rose-500 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
                 {saving ? "Registrando..." : "Registrar Venta"}
               </button>

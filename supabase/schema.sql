@@ -3,6 +3,9 @@
 -- Incluye tabla de participaciones de empleadas por transacción
 -- Seguro para re-ejecutar (idempotente)
 -- ============================================================
+-- MIGRACIÓN (si la BD ya existe, ejecutar esto primero):
+-- ALTER TABLE public.transacciones ADD COLUMN IF NOT EXISTS banco_transferencia text;
+-- ============================================================
 
 create extension if not exists "uuid-ossp";
 
@@ -58,6 +61,7 @@ create table if not exists public.transacciones (
   hora             time not null default current_time,
   cliente          text not null,
   metodo_pago      text not null check (metodo_pago in ('efectivo','tarjeta','transferencia')),
+  banco_transferencia text,
   monto_recibido   numeric(12,2) not null default 0,
   monto_servicio   numeric(12,2) not null default 0,
   cambio_entregado numeric(12,2) not null default 0,
@@ -161,6 +165,26 @@ end; $$;
 insert into public.empleadas (nombre)
 select nombre from (values ('Ana García'),('Laura Pérez'),('María Santos')) as v(nombre)
 where not exists (select 1 from public.empleadas limit 1);
+
+-- ============================================================
+-- TABLA: pagos_comisiones
+-- Registra cada pago quincenal de comisiones a empleadas
+-- ============================================================
+create table if not exists public.pagos_comisiones (
+  id               uuid primary key default uuid_generate_v4(),
+  empleada_nombre  text not null,
+  fecha_desde      date not null,
+  fecha_hasta      date not null,
+  monto_total      numeric(12,2) not null,
+  fecha_pago       date not null default current_date,
+  notas            text not null default '',
+  created_at       timestamptz not null default now()
+);
+alter table public.pagos_comisiones enable row level security;
+drop policy if exists "Allow all on pagos_comisiones" on public.pagos_comisiones;
+create policy "Allow all on pagos_comisiones" on public.pagos_comisiones for all using (true) with check (true);
+create index if not exists pagos_com_empleada_idx on public.pagos_comisiones(empleada_nombre);
+create index if not exists pagos_com_fecha_idx on public.pagos_comisiones(fecha_pago);
 
 -- Variables de entorno en .env.local:
 -- NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
