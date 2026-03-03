@@ -12,10 +12,10 @@ import {
   Tag, Search, PlusCircle
 } from "lucide-react"
 import { cn, formatCurrency, formatTime, todayISO } from "@/lib/utils"
-import { SERVICIOS, getPorcentaje } from "@/lib/supabase"
 import type {
   Transaccion, GastoImprevisto, ResumenDiario, Empleada,
-  Participacion, ParticipanteForm, ComisionEmpleada, ServicioTipo
+  Participacion, ParticipanteForm, ComisionEmpleada, ServicioTipo,
+  PagoComision, Fiado, AbonoFiado
 } from "@/lib/supabase"
 import {
   getInitialData, addTransactionAction, deleteTransactionAction,
@@ -26,7 +26,7 @@ import {
   addAbonoAction, marcarSaldadoAction, deleteFiadoAction, acumularFiadoAction, getTransaccionesClienteAction,
   getServiciosComisionAction, addServicioComisionAction, updateServicioComisionAction, deleteServicioComisionAction,
 } from "@/actions"
-import type { PagoComision, Fiado, AbonoFiado } from "@/lib/supabase"
+
 import type { ServicioComision } from "@/actions"
 
 type Section = "dashboard" | "nueva-transaccion" | "transacciones" | "gastos" | "estadisticas" | "comisiones" | "comisiones-quincenales" | "empleadas" | "servicios" | "servicios-comision" | "fiados" | "configuracion"
@@ -535,7 +535,8 @@ export default function SalonPOS() {
   const comisionPreview = participantes.map(p => {
     if (!p.empleada_nombre || !newTx.monto_servicio) return null
     const base = newTx.monto_servicio / numParticipantes
-    const pct = getPorcentaje(p.servicio)
+    const sc = serviciosComision.find(s => s.id === p.servicio)
+    const pct = sc?.porcentaje ?? 0
     return { nombre: p.empleada_nombre, servicio: p.servicio, pct, base, comision: base * pct / 100 }
   }).filter(Boolean)
 
@@ -1437,7 +1438,7 @@ export default function SalonPOS() {
                                     <div>
                                       <span className="font-medium text-sm text-gray-800">{p.empleada_nombre}</span>
                                       <span className="text-xs text-gray-400 ml-2">
-                                        {SERVICIOS.find(s => s.value === p.servicio)?.label} · {p.porcentaje}%
+                                        {p.servicio} · {p.porcentaje}%
                                       </span>
                                     </div>
                                     <div className="text-right">
@@ -1567,7 +1568,7 @@ export default function SalonPOS() {
                         <div key={p.id} className="flex items-center justify-between px-5 py-2.5">
                           <div>
                             <div className="text-sm text-gray-700">
-                              {SERVICIOS.find(s => s.value === p.servicio)?.label}
+                              {p.servicio}
                             </div>
                             <div className="text-xs text-gray-400">
                               Base {formatCurrency(p.monto_base)} × {p.porcentaje}%
@@ -1639,7 +1640,7 @@ export default function SalonPOS() {
                 body: c.participaciones.map((p: any) => [
                   p.fecha,
                   p.cliente || "—",
-                  SERVICIOS.find((s: any) => s.value === p.servicio)?.label || p.servicio,
+                  p.servicio,
                   formatCurrency(p.monto_base),
                   `${p.porcentaje}%`,
                   formatCurrency(p.comision),
@@ -1673,7 +1674,7 @@ export default function SalonPOS() {
                 ...c.participaciones.map((p: any) => [
                   p.fecha,
                   p.cliente || "—",
-                  SERVICIOS.find((s: any) => s.value === p.servicio)?.label || p.servicio,
+                  p.servicio,
                   p.monto_base, p.porcentaje, p.comision,
                 ]),
                 [], ["TOTAL", "", "", "", "", c.total],
@@ -1837,7 +1838,7 @@ export default function SalonPOS() {
                                   {(parts as any[]).map((p: any, i: number) => (
                                     <div key={i} className="flex items-center justify-between text-sm py-1 pl-3 border-l-2 border-rose-100">
                                       <div>
-                                        <span className="text-gray-600">{SERVICIOS.find((s: any) => s.value === p.servicio)?.label || p.servicio}</span>
+                                        <span className="text-gray-600">{p.servicio}</span>
                                         {p.cliente && p.cliente !== "—" && (
                                           <span className="ml-2 text-xs text-gray-400 font-medium">· {p.cliente}</span>
                                         )}
@@ -2024,8 +2025,8 @@ export default function SalonPOS() {
                 <h3 className="font-semibold text-gray-800">Tabla de Comisiones</h3>
               </div>
               <div className="divide-y divide-gray-50">
-                {SERVICIOS.map(s => (
-                  <div key={s.value} className="flex items-center justify-between px-6 py-3">
+                {serviciosComision.map(s => (
+                  <div key={s.id} className="flex items-center justify-between px-6 py-3">
                     <span className="text-sm text-gray-700">{s.label}</span>
                     <span className={cn("text-sm font-bold rounded-full px-3 py-1",
                       s.porcentaje >= 15 ? "bg-rose-100 text-rose-700" :
@@ -2792,7 +2793,7 @@ export default function SalonPOS() {
           head: [["Empleada","Servicio","Base","% Comisión","Comisión"]],
           body: comisiones.flatMap(c => c.participaciones.map(p => [
             p.empleada_nombre,
-            SERVICIOS.find(s => s.value === p.servicio)?.label || p.servicio,
+            p.servicio,
             formatCurrency(p.monto_base),
             `${p.porcentaje}%`,
             formatCurrency(p.comision),
@@ -2862,7 +2863,7 @@ export default function SalonPOS() {
           ["Empleada","Servicio","% Comisión","Monto Base","Comisión"],
           ...comisiones.flatMap(c => c.participaciones.map(p => [
             p.empleada_nombre,
-            SERVICIOS.find(s => s.value === p.servicio)?.label || p.servicio,
+            p.servicio,
             p.porcentaje, p.monto_base, p.comision
           ]))
         ]), "Comisiones")
