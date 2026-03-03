@@ -294,15 +294,24 @@ export async function getComisionesQuincenalesAction(fechaDesde: string, fechaHa
       cliente: txMap[p.transaccion_id] || "—",
     }))
 
-    // Para cada empleada, calcular acumulado en el rango
+    // Para cada empleada, calcular acumulado en el rango excluyendo períodos ya pagados
     const resumen = empleadas.map(e => {
       const parts = partsConCliente.filter(p => p.empleada_nombre === e.nombre)
-      const total = parts.reduce((s, p) => s + (p.comision ?? 0), 0)
-      const ultimoPago = pagos.find(pg => pg.empleada_nombre === e.nombre)
+
+      // Obtener todos los pagos de esta empleada que se solapan con el rango
+      const pagosEmpleada = pagos.filter(pg => pg.empleada_nombre === e.nombre)
+
+      // Excluir participaciones cuya fecha caiga dentro de un período ya pagado
+      const partsNoPagadas = parts.filter(p => {
+        return !pagosEmpleada.some(pg => p.fecha >= pg.fecha_desde && p.fecha <= pg.fecha_hasta)
+      })
+
+      const total = partsNoPagadas.reduce((s, p) => s + (p.comision ?? 0), 0)
+      const ultimoPago = pagosEmpleada[0] // ya viene ordenado por fecha_pago desc
       return {
         nombre: e.nombre,
         total,
-        participaciones: parts,
+        participaciones: partsNoPagadas,
         ultimo_pago: ultimoPago?.fecha_pago,
         ultimo_periodo: ultimoPago ? `${ultimoPago.fecha_desde} → ${ultimoPago.fecha_hasta}` : undefined,
       }
