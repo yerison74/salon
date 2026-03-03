@@ -115,15 +115,18 @@ export async function addTransactionAction(data: {
     // comision = monto_base * porcentaje / 100
     if (participantes.length > 0) {
       const montoBase = data.monto_servicio / participantes.length
-      const parts = participantes.map(p => ({
-        transaccion_id: inserted.id,
-        empleada_nombre: p.empleada_nombre,
-        servicio: p.servicio,
-        porcentaje: getPorcentaje(p.servicio),
-        monto_base: montoBase,
-        comision: montoBase * getPorcentaje(p.servicio) / 100,
-        fecha: today,
-      }))
+      const parts = participantes.map(p => {
+        const pct = p.porcentaje ?? getPorcentaje(p.servicio as any)
+        return {
+          transaccion_id: inserted.id,
+          empleada_nombre: p.empleada_nombre,
+          servicio: p.servicio_label || p.servicio,
+          porcentaje: pct,
+          monto_base: montoBase,
+          comision: montoBase * pct / 100,
+          fecha: today,
+        }
+      })
       const { error: partError } = await supabase.from("participaciones_empleadas").insert(parts)
       if (partError) throw partError
     }
@@ -564,5 +567,61 @@ export async function deleteFiadoAction(fiado_id: string) {
     return { success: true }
   } catch (error: any) {
     return { success: false, error: error?.message || "Error al eliminar fiado" }
+  }
+}
+
+// ── SERVICIOS DE COMISIÓN ─────────────────────────────────────────────────────
+
+export interface ServicioComision {
+  id: string
+  label: string
+  porcentaje: number
+  activo: boolean
+  orden: number
+}
+
+export async function getServiciosComisionAction() {
+  try {
+    const { data, error } = await supabase
+      .from("servicios_comision")
+      .select("*")
+      .eq("activo", true)
+      .order("orden", { ascending: true })
+    if (error) throw error
+    return { success: true, servicios: (data || []) as ServicioComision[] }
+  } catch (error: any) {
+    return { success: false, servicios: [], error: error?.message }
+  }
+}
+
+export async function addServicioComisionAction(data: { label: string; porcentaje: number }) {
+  try {
+    const { data: existing } = await supabase.from("servicios_comision").select("orden").order("orden", { ascending: false }).limit(1)
+    const nextOrden = ((existing?.[0]?.orden) ?? 0) + 1
+    const { error } = await supabase.from("servicios_comision").insert({ ...data, orden: nextOrden, activo: true })
+    if (error) throw error
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error?.message }
+  }
+}
+
+export async function updateServicioComisionAction(id: string, data: { label?: string; porcentaje?: number }) {
+  try {
+    const { error } = await supabase.from("servicios_comision").update(data).eq("id", id)
+    if (error) throw error
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error?.message }
+  }
+}
+
+export async function deleteServicioComisionAction(id: string) {
+  try {
+    const { error } = await supabase.from("servicios_comision").update({ activo: false }).eq("id", id)
+    if (error) throw error
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error?.message }
   }
 }

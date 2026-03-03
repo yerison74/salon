@@ -24,10 +24,12 @@ import {
   getComisionesQuincenalesAction, registrarPagoComisionAction,
   registrarPagoTodosAction, getFiadosAction, addFiadoAction,
   addAbonoAction, marcarSaldadoAction, deleteFiadoAction, acumularFiadoAction, getTransaccionesClienteAction,
+  getServiciosComisionAction, addServicioComisionAction, updateServicioComisionAction, deleteServicioComisionAction,
 } from "@/actions"
 import type { PagoComision, Fiado, AbonoFiado } from "@/lib/supabase"
+import type { ServicioComision } from "@/actions"
 
-type Section = "dashboard" | "nueva-transaccion" | "transacciones" | "gastos" | "estadisticas" | "comisiones" | "comisiones-quincenales" | "empleadas" | "servicios" | "fiados" | "configuracion"
+type Section = "dashboard" | "nueva-transaccion" | "transacciones" | "gastos" | "estadisticas" | "comisiones" | "comisiones-quincenales" | "empleadas" | "servicios" | "servicios-comision" | "fiados" | "configuracion"
 
 // ─── LISTA DE PRECIOS ────────────────────────────────────
 export interface PrecioServicio {
@@ -84,6 +86,7 @@ const MENU_ITEMS = [
   { id: "comisiones-quincenales", label: "Quincena",           icon: TrendingUp },
   { id: "empleadas",         label: "Empleadas",        icon: UserPlus },
   { id: "servicios",         label: "Servicios",        icon: Tag },
+  { id: "servicios-comision", label: "Comisiones Config", icon: Award },
   { id: "fiados",            label: "Fiados",           icon: Wallet },
   { id: "configuracion",     label: "Configuración",   icon: Settings },
 ] as const
@@ -96,7 +99,7 @@ const PAYMENT_COLORS = {
 }
 
 // ─── Formulario vacío de participante ────────────────────
-const emptyParticipante = (): ParticipanteForm => ({ empleada_nombre: "", servicio: "todo" })
+const emptyParticipante = (): ParticipanteForm => ({ empleada_nombre: "", servicio: "" })
 
 export default function SalonPOS() {
   const [transactions,  setTransactions]  = useState<Transaccion[]>([])
@@ -175,6 +178,18 @@ export default function SalonPOS() {
   const [abonoMetodo,     setAbonoMetodo]     = useState<"efectivo"|"tarjeta"|"transferencia">("efectivo")
   const [abonoBanco,      setAbonoBanco]      = useState("")
   const [fiadosLoaded,    setFiadosLoaded]    = useState(false)
+
+  // Servicios de comisión (dinámicos desde BD)
+  const [serviciosComision, setServiciosComision] = useState<ServicioComision[]>([])
+  const [scLoaded, setScLoaded] = useState(false)
+  const [scNuevo, setScNuevo] = useState({ label: "", porcentaje: "" })
+  const [scEditando, setScEditando] = useState<string | null>(null)
+  const [scEditVal, setScEditVal] = useState({ label: "", porcentaje: "" })
+
+  const cargarServiciosComision = async () => {
+    const res = await getServiciosComisionAction()
+    if (res.success) { setServiciosComision(res.servicios); setScLoaded(true) }
+  }
   const [fiadoSeleccionadoId, setFiadoSeleccionadoId] = useState<string|null>(null)
 
   const cargarFiados = async () => {
@@ -498,6 +513,7 @@ export default function SalonPOS() {
 
   // Cargar fiados al entrar a la sección
   useEffect(() => { if ((section === "fiados" || section === "nueva-transaccion") && !fiadosLoaded) cargarFiados() }, [section])
+  useEffect(() => { if (!scLoaded) cargarServiciosComision() }, [])
 
   // Cuando cambia la cantidad de participantes, ajustar el array
   useEffect(() => {
@@ -538,6 +554,13 @@ export default function SalonPOS() {
     const clienteNombre = newTx.cliente.trim() || fiados.find(f => f.id === fiadoSeleccionadoId)?.cliente_nombre || ""
     if (!clienteNombre) return showToast("Nombre del cliente requerido", "err")
     if (newTx.monto_servicio <= 0) return showToast("Ingresa el monto del servicio", "err")
+
+    // Validar que toda empleada seleccionada tenga un servicio
+    const partConNombre = participantes.filter(p => p.empleada_nombre.trim() !== "")
+    const partSinServicio = partConNombre.filter(p => !p.servicio)
+    if (partSinServicio.length > 0) {
+      return showToast(`Debes seleccionar qué hizo: ${partSinServicio.map(p => p.empleada_nombre).join(", ")}`, "err")
+    }
     if (newTx.metodo_pago === "efectivo" && newTx.monto_recibido <= 0) return showToast("Ingresa el monto recibido", "err")
     if (newTx.metodo_pago === "transferencia" && !bancoSeleccionado) return showToast("Selecciona el banco de destino", "err")
 
@@ -555,7 +578,15 @@ export default function SalonPOS() {
                       newTx.metodo_pago === "transferencia" ? newTx.monto_servicio :
                       newTx.metodo_pago === "fiado" ? 0 : newTx.monto_recibido,
       cambio_entregado: cambioCalc,
-      participantes: participantes.filter(p => p.empleada_nombre.trim() !== ""),
+      participantes: participantes.filter(p => p.empleada_nombre.trim() !== "" && p.servicio).map(p => {
+        const sc = serviciosComision.find(s => s.id === p.servicio)
+        return {
+          empleada_nombre: p.empleada_nombre,
+          servicio: sc?.id || p.servicio,
+          porcentaje: sc?.porcentaje ?? 0,
+          servicio_label: sc?.label || p.servicio,
+        }
+      }),
     })
 
     // Si es fiado, registrar o acumular en la tabla de fiados
@@ -1261,24 +1292,35 @@ export default function SalonPOS() {
                             next[i] = { ...next[i], servicio: e.target.value as ServicioTipo }
                             setParticipantes(next)
                           }}
-                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-pink-300">
-                          {SERVICIOS.map(s => (
-                            <option key={s.value} value={s.value}>{s.label} ({s.porcentaje}%)</option>
+                          className={cn(
+                            "w-full rounded-lg border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-pink-300",
+                            p.empleada_nombre && !p.servicio ? "border-rose-400 bg-rose-50" : "border-gray-200"
+                          )}>
+                          <option value="">— Ninguno —</option>
+                          {(scLoaded ? serviciosComision : []).map(s => (
+                            <option key={s.id} value={s.id}>{s.label} ({s.porcentaje}%)</option>
                           ))}
                         </select>
+                        {p.empleada_nombre && !p.servicio && (
+                          <p className="text-xs text-rose-500 mt-1">Selecciona qué hizo esta empleada</p>
+                        )}
                       </div>
                     </div>
                     {/* Preview comisión para esta empleada */}
-                    {p.empleada_nombre && newTx.monto_servicio > 0 && (
+                    {p.empleada_nombre && p.servicio && newTx.monto_servicio > 0 && (() => {
+                      const sc = serviciosComision.find(s => s.id === p.servicio)
+                      const pct = sc?.porcentaje ?? 0
+                      return (
                       <div className="flex items-center justify-between rounded-lg bg-rose-50 px-3 py-1.5">
                         <span className="text-xs text-rose-600">
-                          Base: {formatCurrency(newTx.monto_servicio / numParticipantes)} × {getPorcentaje(p.servicio)}%
+                          Base: {formatCurrency(newTx.monto_servicio / numParticipantes)} × {pct}%
                         </span>
                         <span className="text-xs font-bold text-rose-700">
-                          Comisión: {formatCurrency((newTx.monto_servicio / numParticipantes) * getPorcentaje(p.servicio) / 100)}
+                          Comisión: {formatCurrency((newTx.monto_servicio / numParticipantes) * pct / 100)}
                         </span>
                       </div>
-                    )}
+                      )
+                    })()}
                   </div>
                 ))}
               </div>
@@ -2293,13 +2335,107 @@ export default function SalonPOS() {
         )
       }
 
+      // ── SERVICIOS DE COMISIÓN ─────────────────────────
+      case "servicios-comision":
+        return (
+          <div className="max-w-2xl mx-auto space-y-5">
+            <div className="rounded-2xl border border-pink-100 bg-white shadow-sm p-6 space-y-5">
+              <h3 className="font-semibold text-gray-800 flex items-center gap-2 text-lg">
+                <Award className="h-5 w-5 text-pink-400" /> Servicios de Comisión
+              </h3>
+              <p className="text-sm text-gray-400">Define qué puede hacer cada empleada y el porcentaje de comisión que le corresponde.</p>
+
+              {/* Lista */}
+              <div className="space-y-2">
+                {serviciosComision.length === 0 && (
+                  <p className="text-sm text-gray-400 text-center py-6">No hay servicios. Agrega uno abajo.</p>
+                )}
+                {serviciosComision.map(sc => (
+                  <div key={sc.id} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                    {scEditando === sc.id ? (
+                      <>
+                        <input value={scEditVal.label} onChange={e => setScEditVal(v => ({ ...v, label: e.target.value }))}
+                          className="flex-1 rounded-lg border border-pink-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" placeholder="Nombre" />
+                        <div className="flex items-center gap-1 w-28">
+                          <input type="number" min="0" max="100" value={scEditVal.porcentaje} onChange={e => setScEditVal(v => ({ ...v, porcentaje: e.target.value }))}
+                            className="w-16 rounded-lg border border-pink-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" placeholder="%" />
+                          <span className="text-xs text-gray-400">%</span>
+                        </div>
+                        <button onClick={async () => {
+                          if (!scEditVal.label.trim()) return showToast("Nombre requerido", "err")
+                          const res = await updateServicioComisionAction(sc.id, { label: scEditVal.label.trim(), porcentaje: parseInt(scEditVal.porcentaje) || 0 })
+                          if (res.success) { showToast("Actualizado ✓"); setScEditando(null); cargarServiciosComision() }
+                          else showToast(res.error || "Error", "err")
+                        }} className="rounded-lg bg-emerald-500 text-white px-3 py-1.5 text-xs font-semibold hover:bg-emerald-600 transition-all">Guardar</button>
+                        <button onClick={() => setScEditando(null)} className="rounded-lg border border-gray-200 text-gray-500 px-3 py-1.5 text-xs hover:bg-gray-100 transition-all">Cancelar</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-sm font-medium text-gray-700">{sc.label}</span>
+                        <span className="rounded-full bg-pink-100 text-pink-600 text-xs font-bold px-3 py-1">{sc.porcentaje}%</span>
+                        <button onClick={() => { setScEditando(sc.id); setScEditVal({ label: sc.label, porcentaje: sc.porcentaje.toString() }) }}
+                          className="rounded-lg border border-gray-200 text-gray-500 hover:text-blue-500 px-3 py-1.5 text-xs hover:border-blue-300 transition-all">Editar</button>
+                        <button onClick={async () => {
+                          if (!confirm(`¿Eliminar "${sc.label}"?`)) return
+                          const res = await deleteServicioComisionAction(sc.id)
+                          if (res.success) { showToast("Eliminado ✓"); cargarServiciosComision() }
+                          else showToast(res.error || "Error", "err")
+                        }} className="text-gray-300 hover:text-red-400 transition-all">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Agregar nuevo */}
+              <div className="rounded-xl border-2 border-dashed border-pink-200 bg-pink-50 p-5 space-y-3">
+                <p className="text-xs font-bold text-pink-600 uppercase tracking-wide">Agregar nuevo servicio</p>
+                <div className="flex gap-3 items-end">
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-500 mb-1">Nombre *</label>
+                    <input value={scNuevo.label} onChange={e => setScNuevo(v => ({ ...v, label: e.target.value }))}
+                      placeholder="Ej: Cepillado, Tintura completa…"
+                      onKeyDown={async e => {
+                        if (e.key === "Enter") {
+                          if (!scNuevo.label.trim()) return showToast("Nombre requerido", "err")
+                          const res = await addServicioComisionAction({ label: scNuevo.label.trim(), porcentaje: parseInt(scNuevo.porcentaje) || 0 })
+                          if (res.success) { showToast("Servicio agregado ✓"); setScNuevo({ label: "", porcentaje: "" }); cargarServiciosComision() }
+                          else showToast(res.error || "Error", "err")
+                        }
+                      }}
+                      className="w-full rounded-xl border border-white bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                  </div>
+                  <div className="w-28">
+                    <label className="block text-xs text-gray-500 mb-1">% Comisión *</label>
+                    <input type="number" min="0" max="100" value={scNuevo.porcentaje}
+                      onChange={e => setScNuevo(v => ({ ...v, porcentaje: e.target.value }))}
+                      placeholder="0"
+                      className="w-full rounded-xl border border-white bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300" />
+                  </div>
+                  <button onClick={async () => {
+                    if (!scNuevo.label.trim()) return showToast("Nombre requerido", "err")
+                    const res = await addServicioComisionAction({ label: scNuevo.label.trim(), porcentaje: parseInt(scNuevo.porcentaje) || 0 })
+                    if (res.success) { showToast("Servicio agregado ✓"); setScNuevo({ label: "", porcentaje: "" }); cargarServiciosComision() }
+                    else showToast(res.error || "Error", "err")
+                  }} className="rounded-xl bg-pink-500 hover:bg-pink-600 text-white px-4 py-2.5 text-sm font-semibold transition-all flex items-center gap-1.5">
+                    <PlusCircle className="h-4 w-4" /> Agregar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+
       // ── CONFIGURACIÓN ─────────────────────────────────
       case "configuracion":
         return (
           <div className="max-w-2xl mx-auto">
+            {/* ── Config general ── */}
             <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-6 space-y-6">
               <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                <Settings className="h-5 w-5 text-gray-400" /> Configuración
+                <Settings className="h-5 w-5 text-gray-400" /> Configuración General
               </h3>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Monto Inicial en Caja (RD$)</label>

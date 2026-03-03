@@ -33,7 +33,9 @@ export function getPorcentaje(servicio: ServicioTipo): number {
 
 export interface ParticipanteForm {
   empleada_nombre: string
-  servicio: ServicioTipo
+  servicio: string        // now can be UUID or legacy ServicioTipo
+  porcentaje?: number     // passed from client when using dynamic servicios
+  servicio_label?: string // label for display
 }
 
 export interface Participacion {
